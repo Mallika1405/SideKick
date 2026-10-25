@@ -86,7 +86,6 @@ function onHook(kind: string, raw: string) {
   }
 }
 
-const seenKinds = new Set<string>();
 const server = createServer((req, res) => {
   if (req.method === 'POST' && req.url?.startsWith('/hook/')) {
     res.writeHead(200).end(); // reply instantly, process after
@@ -95,7 +94,7 @@ const server = createServer((req, res) => {
     req.on('data', (c) => (body += c));
     req.on('end', () => {
       console.log(`[hook:${kind}]`, body.slice(0, 200));
-      if (!seenKinds.has(kind)) { seenKinds.add(kind); writeFileSync(join(samplesDir, `${kind}-${Date.now()}.json`), body); }
+      writeFileSync(join(samplesDir, `${kind}.latest.json`), body); // most recent real payload per hook kind
       try { onHook(kind, body); } catch (e) { console.error('[hook]', e); }
     });
     return;
