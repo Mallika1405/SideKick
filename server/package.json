@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "tts-test": "tsx src/tts-test.ts",
     "eval": "tsx src/eval.ts",
-    "ask-test": "tsx src/ask-test.ts"
+    "ask-test": "tsx src/ask-test.ts",
+    "moss-test": "tsx src/moss-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
