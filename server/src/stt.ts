@@ -15,9 +15,13 @@ export class SttSession {
     this.opening = new Promise((resolve, reject) => {
       const url = `wss://api.cartesia.ai/stt/turns/websocket?model=ink-2&encoding=pcm_s16le&sample_rate=16000&turn_start_threshold=0.5&turn_eager_end_threshold=0.4&cartesia_version=${VERSION}`;
       const ws = new WebSocket(url, { headers: { Authorization: `Bearer ${this.apiKey}`, 'Cartesia-Version': VERSION } });
-      ws.on('open', () => { this.ws = ws; this.opening = null; resolve(ws); });
-      ws.on('error', (e) => { this.opening = null; console.error('[stt] socket error', e.message); reject(e); });
-      ws.on('close', () => { if (this.ws === ws) this.ws = null; });
+      ws.on('open', () => { this.ws = ws; this.opening = null; console.log('[stt] socket open'); resolve(ws); });
+      ws.on('error', (e) => { this.opening = null; console.error('[stt] socket error', e.message); this.onEvent({ type: 'error', message: `speech-to-text connection failed: ${e.message}` }); reject(e); });
+      ws.on('close', (code, reason) => {
+        if (this.ws === ws) this.ws = null;
+        console.log(`[stt] socket closed code=${code} ${reason.toString()}`);
+        if (code !== 1000 && code !== 1005) this.onEvent({ type: 'error', message: `speech-to-text socket closed (code ${code}) ${reason.toString()}`.trim() });
+      });
       ws.on('message', (raw, isBinary) => {
         if (isBinary) return;
         try { this.onEvent(JSON.parse(raw.toString())); } catch { /* ignore malformed */ }

@@ -300,17 +300,26 @@ function explainTarget(t: DetailTarget) {
 
 function onStt(ev: SttEvent) {
   console.log('[stt]', ev.type, ev.transcript ?? ev.message ?? '');
+  lastSttEventAt = Date.now();
   if (ev.transcript) sendTo(consoles, { type: 'heard', text: ev.transcript });
   if (!state.toggles.listen) return;
   if (ev.type === 'turn.start') { speaker.interrupt(); } // barge-in: stops audio, cancels Claude stream + TTS context
   else if (ev.type === 'turn.eager_end' && ev.transcript?.trim()) eager = { transcript: ev.transcript, hits: retrieve(ev.transcript) };
   else if (ev.type === 'turn.resume') eager = null;
   else if (ev.type === 'turn.end' && ev.transcript && ev.transcript.trim().length > 1) ask(ev.transcript.trim());
-  else if (ev.type === 'error') console.error('[stt]', ev);
+  else if (ev.type === 'error') { console.error('[stt]', ev); sendTo(consoles, { type: 'notice', text: `Speech-to-text error: ${(ev as { message?: string; title?: string }).message ?? (ev as { title?: string }).title ?? 'unknown'}` }); }
 }
-let micFrames = 0, micPeak = 0, micSumSq = 0, micSamples = 0;
+let micFrames = 0, micPeak = 0, micSumSq = 0, micSamples = 0, lastSttEventAt = 0, loudSince = 0;
 setInterval(() => {
-  if (micFrames) console.log(`[mic] ${micFrames} frames/5s rms=${Math.sqrt(micSumSq / micSamples).toFixed(4)} peak=${micPeak.toFixed(3)}`);
+  if (micFrames) {
+    const rms = Math.sqrt(micSumSq / Math.max(1, micSamples));
+    console.log(`[mic] ${micFrames} frames/5s rms=${rms.toFixed(4)} peak=${micPeak.toFixed(3)}`);
+    if (micPeak < 0.01) sendTo(consoles, { type: 'notice', text: 'Mic is sending silence. Check the input device and that the browser has mic permission for localhost.' });
+    else if (micPeak > 0.05) {
+      loudSince ||= Date.now();
+      if (Date.now() - loudSince > 9000 && lastSttEventAt < loudSince) sendTo(consoles, { type: 'notice', text: 'Speech is reaching the server but Cartesia has returned no transcript events. Check the server terminal for [stt] lines.' });
+    }
+  } else loudSince = 0;
   micFrames = 0; micPeak = 0; micSumSq = 0; micSamples = 0;
 }, 5000);
 function measure(buf: Buffer) {
