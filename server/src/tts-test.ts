@@ -1,0 +1,10 @@
+import { CartesiaTts, TTS_SAMPLE_RATE } from './cartesia.js';
+import { writeFileSync } from 'node:fs';
+const tts = new CartesiaTts(process.env.CARTESIA_API_KEY!, { narrator: process.env.CARTESIA_NARRATOR_VOICE_ID!, reviewer: process.env.CARTESIA_REVIEWER_VOICE_ID! });
+const bufs: Buffer[] = [];
+const ctx = tts.start('narrator', { onChunk: (b) => bufs.push(Buffer.from(b, 'base64')), onDone: () => {} });
+ctx.push('Sidekick is online.', true);
+await ctx.done;
+writeFileSync('/tmp/sidekick-test.pcm', Buffer.concat(bufs));
+console.log('bytes', Buffer.concat(bufs).length, 'rate', TTS_SAMPLE_RATE);
+process.exit(0);
