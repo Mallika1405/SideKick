@@ -14,7 +14,11 @@
     "ext:build": "npm run build -w extension",
     "demo:server": "npm run console:build && SIDEKICK_ROOT=\"$PWD/demo-fresh\" npm run dev -w server",
     "console:build": "npm run build -w console",
-    "server:built": "npm run console:build && npm run dev -w server"
+    "server:built": "npm run console:build && npm run dev -w server",
+    "ext:package": "./scripts/package-extension.sh",
+    "audio:build": "extension/native/build.sh",
+    "eval": "npm run eval -w server",
+    "moss-test": "npm run moss-test -w server"
   },
   "dependencies": {
     "convex": "^1.48.0"

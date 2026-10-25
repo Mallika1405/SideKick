@@ -7,3 +7,8 @@ dist/
 *.pem
 *.key
 .DS_Store
+
+# runtime artifacts
+server/samples/*.latest.json
+.vscode/
+extension/*.vsix

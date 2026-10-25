@@ -10,7 +10,7 @@
 -    return df.dropna(subset=['exam_score','sleep_hours'])
 +    df['sleep_hours'] = df['sleep_hours'].fillna(df['sleep_hours'].median())
 +    return df.dropna(subset=['exam_score'])
-","In the missing-data function, rows with no sleep hours are now kept by filling their sleep hours with the median, and only rows missing an exam score are dropped.","7-8",""
+","Students with missing sleep hours are now kept, with their sleep hours filled in using the median, and only rows missing exam score get dropped.","cleaning/missing.py:7-8",""
 "outlier-threshold","sleepstudy/cleaning/outliers.py","The outlier cutoff is now a hard-coded 2.5 instead of the config value.","Index: sleepstudy/cleaning/outliers.py
 ===================================================================
 --- sleepstudy/cleaning/outliers.py
@@ -21,7 +21,7 @@
      z = (df.exam_score - df.exam_score.mean()) / df.exam_score.std()
 -    return df[z.abs() < CONFIG.outlier_z]
 +    return df[z.abs() < 2.5]
-","The outlier filter now uses a hard-coded z-score cutoff of 2.5 instead of reading the threshold from the project config.","7-7",""
+","The outlier cutoff in the exam-score filter is now a fixed value of two and a half, instead of the configured setting.","cleaning/outliers.py:7-7",""
 "sleep-range-upper","sleepstudy/cleaning/sleep_range.py","The upper sleep limit is now 24 hours instead of the configured maximum, so impossible long values are kept.","Index: sleepstudy/cleaning/sleep_range.py
 ===================================================================
 --- sleepstudy/cleaning/sleep_range.py
@@ -32,7 +32,7 @@
      """"""Remove impossible sleep durations.""""""
 -    return df[df.sleep_hours.between(CONFIG.min_sleep_hours, CONFIG.max_sleep_hours)]
 +    return df[df.sleep_hours.between(CONFIG.min_sleep_hours, 24)]
-","The sleep range filter now uses a fixed upper limit of twenty-four hours instead of the configured maximum sleep hours, while still using the configured minimum.","6-6",""
+","The upper bound used to come from the config, and now the filter hard-codes twenty-four hours as the maximum sleep duration.","cleaning/sleep_range.py:6-6",""
 "split-leakage","sleepstudy/models/split.py","Features are standardised using the whole dataset before the train/test split (leakage).","Index: sleepstudy/models/split.py
 ===================================================================
 --- sleepstudy/models/split.py
@@ -43,7 +43,7 @@
      X, y = df[FEATURE_COLUMNS], df[CONFIG.target]
 +    X = (X - X.mean()) / X.std()  # standardise features
      return train_test_split(X, y, test_size=CONFIG.test_fraction, random_state=CONFIG.random_seed)
-","In the split helper, the feature table is now standardized using the mean and standard deviation computed over the whole dataset before the train and test split happens.","8-8",""
+","The split function now standardises the feature columns using the mean and standard deviation of the whole dataset, before splitting into train and test.","models/split.py:8-8",""
 "ridge-alphas","sleepstudy/models/ridge.py","The ridge regularisation search now tries only one very small value.","Index: sleepstudy/models/ridge.py
 ===================================================================
 --- sleepstudy/models/ridge.py
@@ -54,7 +54,7 @@
  def fit_ridge(X_train, y_train):
 -    return RidgeCV(alphas=[0.1, 1.0, 10.0]).fit(X_train, y_train)
 +    return RidgeCV(alphas=[0.0001]).fit(X_train, y_train)
-","The ridge model's search over regularization strengths has changed: it now tries only one very small value instead of three, so the model is fit with almost no regularization.","4-4",""
+","The ridge model's search over regularization strengths was changed so it now tries only one, a very small value.","models/ridge.py:4-4",""
 "forest-trees","sleepstudy/models/forest.py","The random forest now uses 5 trees instead of 200.","Index: sleepstudy/models/forest.py
 ===================================================================
 --- sleepstudy/models/forest.py
@@ -65,7 +65,7 @@
  def fit_forest(X_train, y_train):
 -    return RandomForestRegressor(n_estimators=200, random_state=CONFIG.random_seed).fit(X_train, y_train)
 +    return RandomForestRegressor(n_estimators=5, random_state=CONFIG.random_seed).fit(X_train, y_train)
-","In the forest model file, the number of trees in the random forest was reduced from 200 down to 5, which should make training much faster but may lower model quality.","5-5",""
+","The forest-fitting function now builds the random forest with five trees instead of two hundred.","models/forest.py:5-5",""
 "config-test-fraction","sleepstudy/config.py","The test fraction goes from 20 percent to 50 percent.","Index: sleepstudy/config.py
 ===================================================================
 --- sleepstudy/config.py
@@ -79,7 +79,7 @@
      min_sleep_hours: float = 2.0
      max_sleep_hours: float = 14.0
      outlier_z: float = 3.0
-","The test fraction setting in the config changed from twenty percent to fifty percent, so half of the data is now held out for testing.","6-6",""
+","The test fraction default in the config changed from zero point two to zero point five, so half the data is now held out for testing.","sleepstudy/config.py:6-6",""
 "scaler-fit-transform","sleepstudy/models/scaling.py","The function now returns the scaled training data instead of the fitted scaler.","Index: sleepstudy/models/scaling.py
 ===================================================================
 --- sleepstudy/models/scaling.py
@@ -90,7 +90,7 @@
      """"""Fit the scaler on training data only.""""""
 -    return StandardScaler().fit(X_train)
 +    return StandardScaler().fit_transform(X_train)
-","The function that fits the scaler on training data now returns the transformed training data instead of the fitted scaler object itself.","5-5",""
+","The function that fits the scaler now returns transformed training data instead of the fitted scaler object itself.","models/scaling.py:5-5",""
 "dedupe-keep-first","sleepstudy/cleaning/drop_duplicates.py","Duplicate students now keep their earliest row instead of the latest.","Index: sleepstudy/cleaning/drop_duplicates.py
 ===================================================================
 --- sleepstudy/cleaning/drop_duplicates.py
@@ -101,7 +101,7 @@
      """"""Drop repeated student rows, keeping the latest.""""""
 -    return df.sort_values('submitted_at').drop_duplicates('student_id', keep='last')
 +    return df.sort_values('submitted_at').drop_duplicates('student_id', keep='first')
-","The keep argument in the drop-duplicates call changed from last to first, so the function now keeps the earliest submission per student instead of the latest, even though the docstring still says it keeps the latest.","6-6",""
+","The duplicate-removal function now keeps the first row for each student after sorting by submission time, instead of the last.","cleaning/drop_duplicates.py:6-6",""
 "evaluate-rmse","sleepstudy/models/evaluate.py","The evaluation results now also include root mean squared error.","Index: sleepstudy/models/evaluate.py
 ===================================================================
 --- sleepstudy/models/evaluate.py
@@ -112,7 +112,7 @@
      pred = model.predict(X_test)
 -    return {'r2': r2_score(y_test, pred), 'mae': mean_absolute_error(y_test, pred)}
 +    return {'r2': r2_score(y_test, pred), 'mae': mean_absolute_error(y_test, pred), 'rmse': float(((y_test - pred) ** 2).mean() ** 0.5)}
-","The evaluate function now also returns an RMSE value, computed by hand as the square root of the mean squared error, alongside the existing R-squared and mean absolute error.","5-5",""
+","The evaluate function now also returns an RMSE value, computed by hand from the squared errors, alongside R-squared and MAE.","models/evaluate.py:5-5",""
 "ttest-equal-var","sleepstudy/stats/ttest.py","The t-test now assumes equal variances in both groups instead of Welch correction.","Index: sleepstudy/stats/ttest.py
 ===================================================================
 --- sleepstudy/stats/ttest.py
@@ -123,7 +123,7 @@
      b = df[df.sleep_bin == 'normal'].exam_score
 -    return stats.ttest_ind(a, b, equal_var=False)
 +    return stats.ttest_ind(a, b, equal_var=True)
-","In the short-versus-normal sleep comparison, the t-test call in the function that compares short and normal sleep groups changed from using unequal variances to assuming equal variances.","7-7",""
+","In the t-test function, the equal variance option switched from unequal to equal variances.","stats/ttest.py:7-7",""
 "scatter-title","sleepstudy/plots/scatter.py","The scatter plot gets a title.","Index: sleepstudy/plots/scatter.py
 ===================================================================
 --- sleepstudy/plots/scatter.py
@@ -135,7 +135,7 @@
 +    ax.set_title('Sleep vs exam score')
      fig.savefig(out_path, dpi=150, bbox_inches='tight')
      plt.close(fig)
-","In the scatter plot file, the function that draws the sleep versus exam score chart now sets a title reading ""Sleep vs exam score"" on the axes.","7-7",""
+","The scatter plot now gets a title, Sleep vs exam score, set just before the figure is saved.","plots/scatter.py:7-7",""
 "sleep-debt-target","sleepstudy/features/sleep_debt.py","Sleep debt is measured against 7.5 hours instead of 8.","Index: sleepstudy/features/sleep_debt.py
 ===================================================================
 --- sleepstudy/features/sleep_debt.py
@@ -147,7 +147,7 @@
 -    df['sleep_debt'] = (8 - df.sleep_hours).clip(lower=0)
 +    df['sleep_debt'] = (7.5 - df.sleep_hours).clip(lower=0)
      return df
-","The sleep debt calculation changed its target from eight hours to seven and a half hours, so any sleep below seven and a half now counts as debt, and the function that adds the sleep debt column is otherwise unchanged.","5-5",""
+","The sleep debt feature now measures shortfall against seven and a half hours instead of eight, still clipped at zero.","features/sleep_debt.py:5-5",""
 "cv-folds","sleepstudy/models/crossval.py","Cross-validation now uses 10 folds instead of 5.","Index: sleepstudy/models/crossval.py
 ===================================================================
 --- sleepstudy/models/crossval.py
@@ -158,7 +158,7 @@
 -def cv_r2(model, X_train, y_train, folds=5) -> float:
 +def cv_r2(model, X_train, y_train, folds=10) -> float:
      return float(cross_val_score(model, X_train, y_train, cv=folds, scoring='r2').mean())
-","The default number of cross-validation folds in the R-squared function was changed from five to ten.","3-3",""
+","The default number of cross-validation folds in the cv_r2 function changed from five to ten.","models/crossval.py:3-3",""
 "bonferroni-cap","sleepstudy/stats/multiple_testing.py","Adjusted p-values are no longer capped at one.","Index: sleepstudy/stats/multiple_testing.py
 ===================================================================
 --- sleepstudy/stats/multiple_testing.py
@@ -169,4 +169,4 @@
      m = len(pvalues)
 -    return [min(1.0, p * m) for p in pvalues]
 +    return [p * m for p in pvalues]
-","The bonferroni function no longer caps its adjusted p-values at one; it now just multiplies each p-value by the number of tests, so results can exceed 1.0.","6-6",""
+","In the Bonferroni function, the return line no longer caps each adjusted p-value at one; it now just multiplies each p-value by the number of tests.","stats/multiple_testing.py:6-6",""
