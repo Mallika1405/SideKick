@@ -77,14 +77,17 @@ function render() {
   }
 }
 
+/** Opens the file if needed, switches to it in the editor group the user is working in, highlights the lines and scrolls to them. */
 async function highlight(file: string, start: number, end: number) {
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
-  const editor = await vscode.window.showTextDocument(doc, { preserveFocus: true, preview: false });
+  const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.window.visibleTextEditors[0]?.viewColumn ?? vscode.ViewColumn.One;
+  const editor = await vscode.window.showTextDocument(doc, { viewColumn: column, preserveFocus: true, preview: false });
   const range = new vscode.Range(Math.max(0, start - 1), 0, Math.max(0, end - 1), 0);
+  for (const e of vscode.window.visibleTextEditors) e.setDecorations(highlightType, []);
   editor.setDecorations(highlightType, [range]);
-  editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+  editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
   clearTimeout(clearTimer);
-  clearTimer = setTimeout(() => editor.setDecorations(highlightType, []), 8000);
+  clearTimer = setTimeout(() => { for (const e of vscode.window.visibleTextEditors) e.setDecorations(highlightType, []); }, 8000);
 }
 
 function connect() {

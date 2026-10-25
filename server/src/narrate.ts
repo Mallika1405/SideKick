@@ -18,9 +18,10 @@ Rules:
 - Say what changed, based only on the diff. Do not guess intent beyond what the diff shows.
 - If the diff touches code outside the provided context, say "I'm not sure" about that part.
 - Never name a function, class or variable that does not appear in the provided diff or context.
-Output format, exactly:
-Line 1: HIGHLIGHT <file path as given> <startLine>-<endLine>  (the most important changed lines, in the new file)
-Line 2 onward: the spoken sentences. No markdown.`;
+Output format, exactly. Write one line per spoken sentence, each preceded by a highlight line, so the editor can jump to the code you are talking about:
+HIGHLIGHT <file path as given> <startLine>-<endLine>   (the changed lines, in the new file, that the next sentence is about)
+<one spoken sentence on a single line>
+If the change spans several files, use a separate HIGHLIGHT + sentence pair per file, in the order you mention them (at most 3 pairs, respecting the length rule above). No markdown.`;
 
 export type FileChange = { file: string; diff: string; context: string };
 export type NarrateInput = { changes: FileChange[]; lastNarrations: string[]; userPrompt: string; verbosity: Verbosity };
@@ -34,39 +35,37 @@ export function buildUserMessage(i: NarrateInput): string {
   return redact(parts.join('\n\n'));
 }
 
-/** Streams a narration. onHighlight fires once; onSentence fires per complete spoken sentence. */
+/** Streams a narration. Each completed line is either a HIGHLIGHT directive or a spoken sentence; sentences carry the highlight that precedes them. */
 export async function narrate(
   i: NarrateInput,
-  cb: { onHighlight(h: Highlight): void; onSentence(s: string): void },
+  cb: { onSentence(s: string, highlight?: Highlight): void },
   signal: AbortSignal,
 ): Promise<string> {
   const stream = client().messages.stream(
-    { model: NARRATE_MODEL, max_tokens: 300, thinking: { type: 'disabled' }, system: NARRATE_SYSTEM(i.verbosity), messages: [{ role: 'user', content: buildUserMessage(i) }] },
+    { model: NARRATE_MODEL, max_tokens: 400, thinking: { type: 'disabled' }, system: NARRATE_SYSTEM(i.verbosity), messages: [{ role: 'user', content: buildUserMessage(i) }] },
     { signal },
   );
-  let buf = '', headerDone = false, full = '';
-  const flushSentences = (final: boolean) => {
-    let m: RegExpMatchArray | null;
-    while ((m = buf.match(/^([\s\S]*?[.!?])(\s+|$)/)) && (final || m[2].length > 0)) {
-      const s = m[1].trim();
-      buf = buf.slice(m[0].length);
-      if (s) { full += (full ? ' ' : '') + s; cb.onSentence(s); }
+  let buf = '', full = '', pending: Highlight | undefined;
+  const handle = (raw: string) => {
+    const line = raw.trim();
+    if (!line) return;
+    const h = line.match(/^HIGHLIGHT\s+(.+?)\s+(\d+)\s*[-\u2013]\s*(\d+)\s*$/);
+    if (h) {
+      const file = i.changes.find((c) => c.file === h[1])?.file ?? i.changes.find((c) => h[1].endsWith(c.file) || c.file.endsWith(h[1]))?.file ?? i.changes[0].file;
+      pending = { file, start: +h[2], end: +h[3] };
+      return;
     }
-    if (final && buf.trim()) { full += (full ? ' ' : '') + buf.trim(); cb.onSentence(buf.trim()); buf = ''; }
+    if (/^HIGHLIGHT\b/.test(line)) return; // malformed directive: never speak it
+    full += (full ? ' ' : '') + line;
+    cb.onSentence(line, pending);
+    pending = undefined;
   };
   stream.on('text', (t) => {
     buf += t;
-    if (!headerDone) {
-      const nl = buf.indexOf('\n');
-      if (nl < 0) return;
-      const m = buf.slice(0, nl).match(/HIGHLIGHT\s+(.+?)\s+(\d+)-(\d+)/);
-      if (m) { const f = i.changes.find((c) => c.file === m[1])?.file ?? i.changes[0].file; cb.onHighlight({ file: f, start: +m[2], end: +m[3] }); }
-      buf = buf.slice(nl + 1);
-      headerDone = true;
-    }
-    flushSentences(false);
+    let nl: number;
+    while ((nl = buf.indexOf('\n')) >= 0) { handle(buf.slice(0, nl)); buf = buf.slice(nl + 1); }
   });
   await stream.finalMessage();
-  flushSentences(true);
+  handle(buf);
   return full;
 }

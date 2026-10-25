@@ -20,7 +20,7 @@ for (const c of CASES) {
   let highlight = '';
   const text = await narrate(
     { changes: [{ file: c.file, diff: unified(c.file, before, after), context: contextAround(after, startLine, endLine) }], lastNarrations: [], userPrompt: c.prompt, verbosity: 'terse' },
-    { onHighlight: (h) => (highlight = `${h.start}-${h.end}`), onSentence: () => {} },
+    { onSentence: (_s, h) => { if (h && !highlight) highlight = `${h.file}:${h.start}-${h.end}`; } },
     new AbortController().signal,
   );
   console.log(`${c.id}: ${text}`);

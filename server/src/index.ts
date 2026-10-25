@@ -79,6 +79,7 @@ async function reviewBatch(batch: { first: Edit; last: Edit }[]) {
         speaker.enqueue('warning', async (register) => {
           const utt = openUtterance('reviewer', 'reviewer');
           register(() => utt.cancel());
+          sendTo(extensions, { type: 'highlight', file, start: i.line, end: i.line });
           utt.push(`Heads up in ${basename(file)}, around line ${i.line}. ${i.message}`);
           await utt.end();
         });
@@ -100,11 +101,21 @@ const batcher = new Batcher((batch) => {
   speaker.enqueue('narration', async (register) => {
     const ac = new AbortController();
     const utt = openUtterance('narrator', 'narrator');
-    register(() => { ac.abort(); utt.cancel(); });
+    const timers: NodeJS.Timeout[] = [];
+    register(() => { ac.abort(); utt.cancel(); timers.forEach(clearTimeout); });
     try {
+      // Jump the editor to each file as its sentence is reached: estimate when the sentence will be spoken.
+      let spokenMs = 500;
+      const t0 = Date.now();
       const text = await narrate({ changes, lastNarrations, userPrompt, verbosity }, {
-        onHighlight: (h) => sendTo(extensions, { type: 'highlight', ...h }),
-        onSentence: (s) => utt.push(s),
+        onSentence: (s, h) => {
+          if (h) {
+            const delay = Math.max(0, spokenMs - (Date.now() - t0));
+            timers.push(setTimeout(() => sendTo(extensions, { type: 'highlight', ...h }), delay));
+          }
+          spokenMs += s.length * 65;
+          utt.push(s);
+        },
       }, ac.signal);
       state.lastNarrations.push(text);
       const h = changes[0];
