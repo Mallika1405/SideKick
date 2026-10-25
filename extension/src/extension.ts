@@ -124,6 +124,30 @@ function connect() {
   });
 }
 
+/** Diagnostic: can a webview in THIS editor open the microphone? Reports the result in a message and the Sidekick log. */
+function testWebviewMic() {
+  const panel = vscode.window.createWebviewPanel('sidekickMicTest', 'Sidekick mic test', { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true }, { enableScripts: true });
+  const finish = (r: Record<string, unknown>) => {
+    const text = Object.entries(r).map(([k, v]) => `${k}: ${v}`).join(' | ');
+    log.appendLine(`webview mic test: ${text}`);
+    void vscode.window.showInformationMessage(`Webview mic test -> ${r.getUserMedia ?? 'no result'}. ${r.error ?? ''}`, 'Show log').then((c) => c && log.show(true));
+    panel.dispose();
+  };
+  panel.webview.onDidReceiveMessage(finish);
+  setTimeout(() => finish({ getUserMedia: 'TIMED OUT (a permission prompt may be waiting)' }), 20000);
+  panel.webview.html = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline';"></head><body><script>
+    const vs = acquireVsCodeApi();
+    (async () => {
+      const r = { host: navigator.userAgent.match(/(Code|Cursor)\/[\d.]+/)?.[0] ?? 'unknown', mediaDevices: !!navigator.mediaDevices, secureContext: window.isSecureContext };
+      try { r.policyAllowsMic = document.featurePolicy ? document.featurePolicy.allowsFeature('microphone') : 'n/a'; } catch (e) { r.policyAllowsMic = 'err'; }
+      try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); r.getUserMedia = 'OK'; r.mic = s.getAudioTracks()[0].label; s.getTracks().forEach((t) => t.stop()); }
+      catch (e) { r.getUserMedia = 'FAILED'; r.error = e.name + ': ' + e.message; }
+      try { r.audioContext = new AudioContext().state; } catch (e) { r.audioContext = 'err'; }
+      vs.postMessage(r);
+    })();
+  </script></body></html>`;
+}
+
 export function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(
     vscode.window.onDidChangeVisibleTextEditors((es) => es.forEach(renderIssues)),
@@ -147,6 +171,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(
     vscode.commands.registerCommand('sidekick.skip', () => send({ type: 'skip' })),
     vscode.commands.registerCommand('sidekick.openBoard', () => openBoard(true)),
+    vscode.commands.registerCommand('sidekick.testWebviewMic', testWebviewMic),
   );
   render();
   connect();

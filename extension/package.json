@@ -2,7 +2,7 @@
   "name": "sidekick-vscode",
   "displayName": "Sidekick",
   "publisher": "sidekick",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": false,
   "engines": {
     "vscode": "^1.90.0"
@@ -40,6 +40,10 @@
       {
         "command": "sidekick.showLog",
         "title": "Sidekick: Show Log"
+      },
+      {
+        "command": "sidekick.testWebviewMic",
+        "title": "Sidekick: Test Microphone in Webview"
       }
     ],
     "keybindings": [
