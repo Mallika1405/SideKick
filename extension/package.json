@@ -32,6 +32,10 @@
       {
         "command": "sidekick.toggle.whiteboard",
         "title": "Sidekick: Toggle whiteboard"
+      },
+      {
+        "command": "sidekick.openBoard",
+        "title": "Sidekick: Open Whiteboard"
       }
     ],
     "keybindings": [

@@ -7,6 +7,8 @@ import { Whiteboard, type GraphData } from './Whiteboard';
 import { ConvexProvider, ConvexReactClient, useQuery } from 'convex/react';
 import { anyApi } from 'convex/server';
 
+// ?board=1 renders only the whiteboard (used inside the VS Code panel); audio and mic stay in the main console tab.
+const BOARD_ONLY = new URLSearchParams(location.search).has('board');
 const CONVEX_URL = import.meta.env.CONVEX_URL as string | undefined;
 const convex = CONVEX_URL ? new ConvexReactClient(CONVEX_URL) : null;
 
@@ -58,7 +60,7 @@ function App() {
         const m = ServerMsg.safeParse(JSON.parse(e.data));
         if (!m.success) return;
         const d = m.data;
-        if (d.type === 'audio') player.play(d.pcm, d.sampleRate);
+        if (d.type === 'audio') { if (!BOARD_ONLY) player.play(d.pcm, d.sampleRate); }
         else if (d.type === 'stop_playback') player.stop();
         else if (d.type === 'caption') setCaptions((c) => [...c.slice(-19), { role: d.role, text: d.text }]);
         else if (d.type === 'toggles') { setToggles({ ...ALL_ON, ...d.modes }); live.current.listen = d.modes.listen !== false; }
@@ -106,6 +108,15 @@ function App() {
   }, []);
 
   const btn = (on: boolean): React.CSSProperties => ({ padding: '4px 10px', borderRadius: 6, border: '1px solid #888', background: on ? '#1f6feb' : 'transparent', color: on ? '#fff' : 'inherit', cursor: 'pointer' });
+
+  if (BOARD_ONLY) {
+    return (
+      <div style={{ height: '100vh' }}>
+        {convex && <ConvexBridge onGraph={setGraph} />}
+        <Whiteboard graph={graph} newKeys={newKeys} focusKey={focusKey} onAsk={(key) => send({ type: 'ask_node', nodeKey: key })} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ fontFamily: 'system-ui', display: 'grid', gridTemplateColumns: toggles.whiteboard ? 'minmax(320px, 440px) 1fr' : '1fr', gap: 16, height: '100vh', padding: '1rem', boxSizing: 'border-box' }}>

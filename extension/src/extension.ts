@@ -13,6 +13,21 @@ const toggles: Record<Mode, boolean> = { narrate: true, listen: true, review: tr
 const items = new Map<Mode, vscode.StatusBarItem>();
 let connItem: vscode.StatusBarItem;
 let clearTimer: NodeJS.Timeout | undefined;
+let boardPanel: vscode.WebviewPanel | undefined;
+const CONSOLE_URL = 'http://localhost:5173/?board=1';
+
+/** Whiteboard inside the editor: the console's board-only view in a webview iframe (mic/audio stay in the browser tab). */
+async function openBoard() {
+  if (boardPanel) { boardPanel.reveal(vscode.ViewColumn.Beside, true); return; }
+  const src = (await vscode.env.asExternalUri(vscode.Uri.parse(CONSOLE_URL))).toString(true);
+  boardPanel = vscode.window.createWebviewPanel('sidekickBoard', 'Sidekick Whiteboard', { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true }, { enableScripts: true, retainContextWhenHidden: true });
+  boardPanel.onDidDispose(() => (boardPanel = undefined));
+  boardPanel.webview.html = `<!doctype html><html><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http://localhost:* http://127.0.0.1:* https:; style-src 'unsafe-inline';">
+<style>html,body{margin:0;height:100%;background:#fff}iframe{border:0;width:100%;height:100%}</style></head>
+<body><iframe src="${src}"></iframe></body></html>`;
+}
+function closeBoard() { boardPanel?.dispose(); }
 const highlightType = vscode.window.createTextEditorDecorationType({
   backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
   isWholeLine: true,
@@ -80,7 +95,7 @@ function connect() {
   ws.on('message', (raw) => {
     let m: any;
     try { m = JSON.parse(raw.toString()); } catch { return; }
-    if (m.type === 'toggles') { Object.assign(toggles, m.modes); render(); }
+    if (m.type === 'toggles') { Object.assign(toggles, m.modes); render(); if (toggles.whiteboard) void openBoard(); else closeBoard(); }
     else if (m.type === 'highlight') void highlight(m.file, m.start, m.end);
     else if (m.type === 'issues') showIssues(m.items);
   });
@@ -104,7 +119,10 @@ export function activate(ctx: vscode.ExtensionContext) {
     items.set(mode, it);
     ctx.subscriptions.push(it, vscode.commands.registerCommand(`sidekick.toggle.${mode}`, () => send({ type: 'toggle', mode, on: !toggles[mode] })));
   });
-  ctx.subscriptions.push(vscode.commands.registerCommand('sidekick.skip', () => send({ type: 'skip' })));
+  ctx.subscriptions.push(
+    vscode.commands.registerCommand('sidekick.skip', () => send({ type: 'skip' })),
+    vscode.commands.registerCommand('sidekick.openBoard', () => openBoard()),
+  );
   render();
   connect();
 

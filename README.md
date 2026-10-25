@@ -25,7 +25,7 @@ Console --useQuery--> Convex
 |---|---|
 | `server/` | Node 22 + TypeScript hub: hook endpoints, WebSocket, Claude/Cartesia/Moss/Convex clients |
 | `console/` | Vite + React + `@xyflow/react`: mic, player, captions, whiteboard |
-| `extension/` | VS Code/Cursor extension: edit capture, highlights, squiggles, toggles |
+| `extension/` | VS Code/Cursor extension: edit capture, highlights, issue marks, whiteboard panel, toggles |
 | `convex/` | Schema and small mutations/queries (no Claude calls inside Convex) |
 | `shared/` | TypeScript types and zod WebSocket schemas |
 | `demo-repo/` | The project Sidekick narrates, with `.claude/settings.json` hooks |
@@ -47,6 +47,8 @@ npm run console             # console on http://localhost:5173
 **Convex (optional):** `node node_modules/convex/bin/main.js dev`, then put the printed URL in `.env` as `CONVEX_URL`.
 
 **Editor extension:** `npm run ext:build -w extension`, then either press F5 on the `extension/` folder in VS Code, or install `extension/sidekick-0.0.1.vsix` (built with `vsce package`).
+
+**Whiteboard in the editor:** the extension opens the whiteboard as a panel beside your code (command `Sidekick: Open Whiteboard`; the Board status-bar toggle opens/closes it). The panel embeds the console's board-only view (`http://localhost:5173/?board=1`), so `npm run console` must be running. Mic and audio output stay in the main console tab (editor webviews have unreliable mic access); that tab can sit in the background.
 
 **Use it:** open the console, click **Enable audio + mic**, then in `demo-repo/` run `claude` (trust the folder so the hooks load, confirm with `/hooks`). Edit code and listen. Hold **Space** in the console to ask a question; speaking over the narrator stops it. `scripts/reset-demo.sh` restores the demo repo.
 
