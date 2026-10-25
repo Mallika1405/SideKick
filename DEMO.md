@@ -9,8 +9,8 @@ Covers: **narrator, reviewer, listener**, and the whiteboard's **Map, Detail and
    ```bash
    cd /Users/mallika/SideKick && ./scripts/new-demo.sh && npm run demo:server
    ```
-2. In VS Code (extension 0.0.5+, `sidekick.nativeAudio` on): **File > Open Folder** `/Users/mallika/SideKick/demo-fresh`. The whiteboard panel opens beside the editor. Status bar should show **Talk** (not "Mic off").
-3. Only if you use the browser tab instead of native audio: `npm run console`, open http://localhost:5173, click **Enable audio + mic**.
+2. In VS Code (extension 0.0.6+, `sidekick.nativeAudio` on): **File > Open Folder** `/Users/mallika/SideKick/demo-fresh`. The whiteboard panel opens beside the editor (the server serves it itself; no second process needed). Status bar should show **Talk** (not "Mic off").
+3. Only if you use the browser tab instead of native audio: open http://localhost:4317 and click **Enable audio + mic**.
 4. In VS Code's terminal, in `demo-fresh`, start Claude Code and check the hooks loaded:
    ```bash
    claude
@@ -55,7 +55,7 @@ What should happen:
 ## If something goes wrong
 
 - **No voice / "Mic off":** hover the status-bar item for the reason. macOS may need mic access for VS Code (System Settings > Privacy & Security > Microphone), then reload the window. Fallback: set `sidekick.nativeAudio` to false, reload, and use the browser tab.
-- **Whiteboard panel blank:** `npm run console` must be running (the panel loads from it).
+- **Whiteboard panel blank:** open http://localhost:4317/?board=1 in a browser. If that says the console is not built, run `npm run console:build` and reload the VS Code window. (Extension versions before 0.0.6 loaded the panel from port 5173 and need `npm run console` running.)
 - **Narrator seems behind:** it merges changes if Claude is faster than speech; just wait a few seconds.
 - **Claude wrote more than asked:** `/exit`, `./scripts/new-demo.sh`, restart the server and try again.
 - Safety net: record one clean run beforehand.

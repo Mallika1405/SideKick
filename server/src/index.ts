@@ -24,7 +24,8 @@ import { review } from './review.js';
 import { Project, buildDetail, defAt } from './analyze.js';
 import type { Directive } from './protocol.js';
 import type { DetailMsg, DetailTarget } from '@sidekick/shared';
-import { relative } from 'node:path';
+import { relative, extname, normalize, sep } from 'node:path';
+import { createReadStream, statSync } from 'node:fs';
 
 const samplesDir = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'samples');
 mkdirSync(samplesDir, { recursive: true });
@@ -256,6 +257,22 @@ function onHook(kind: string, raw: string) {
   }
 }
 
+// ---- serve the built console, so the editor's whiteboard panel needs no separate dev server -----------
+const consoleDist = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', 'console', 'dist');
+const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2', '.map': 'application/json' };
+function serveConsole(url: string, res: import('node:http').ServerResponse) {
+  if (!existsSync(join(consoleDist, 'index.html'))) {
+    res.writeHead(503, { 'content-type': 'text/plain' }).end('Console is not built. Run: npm run console:build');
+    return;
+  }
+  const path = normalize(decodeURIComponent(url.split('?')[0])).replace(/^(\.\.[/\\])+/, '');
+  let file = join(consoleDist, path);
+  if (!file.startsWith(consoleDist)) { res.writeHead(403).end(); return; }
+  try { if (!statSync(file).isFile()) file = join(consoleDist, 'index.html'); } catch { file = join(consoleDist, 'index.html'); }
+  res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
+  createReadStream(file).pipe(res);
+}
+
 const server = createServer((req, res) => {
   if (req.method === 'POST' && req.url?.startsWith('/hook/')) {
     res.writeHead(200).end(); // reply instantly, process after
@@ -269,6 +286,7 @@ const server = createServer((req, res) => {
     });
     return;
   }
+  if (req.method === 'GET' && req.url) return serveConsole(req.url, res);
   res.writeHead(404).end();
 });
 

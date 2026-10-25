@@ -18,7 +18,7 @@ let log: vscode.OutputChannel;
 let suppressActiveUntil = 0; // our own highlight() switches files; don't report that back as the user's choice
 let activeTimer: NodeJS.Timeout | undefined;
 let boardPanel: vscode.WebviewPanel | undefined;
-const CONSOLE_URL = 'http://localhost:5173/?board=1';
+const CONSOLE_URL = 'http://localhost:4317/?board=1'; // served by the Sidekick server itself (npm run console:build)
 
 /** Whiteboard inside the editor: the console's board-only view in a webview iframe (mic/audio stay in the browser tab). */
 let boardOpening: Promise<void> | undefined;
