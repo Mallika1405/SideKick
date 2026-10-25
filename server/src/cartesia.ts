@@ -59,8 +59,8 @@ export class CartesiaTts {
       id, done,
       push: (text, last = false) => {
         // continuation chunks start with a space; empty transcripts are rejected
-        const t = first ? text : ' ' + text;
-        first = false;
+        const t = text === '' ? '' : first ? text : ' ' + text;
+        if (text !== '') first = false;
         void send(t, !last).catch((e) => console.error('[cartesia] send failed', e));
       },
       cancel: () => {

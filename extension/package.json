@@ -1,7 +1,60 @@
-{ "name": "sidekick-vscode", "displayName": "Sidekick", "publisher": "sidekick", "version": "0.0.1", "private": true,
-  "engines": { "vscode": "^1.90.0" }, "main": "./dist/extension.js",
-  "activationEvents": ["onStartupFinished"],
-  "contributes": { "commands": [] },
-  "scripts": { "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js", "watch": "npm run build -- --watch" },
-  "dependencies": { "@sidekick/shared": "*", "ws": "^8.18.0" },
-  "devDependencies": { "@types/vscode": "^1.90.0", "@types/ws": "^8.5.12", "@types/node": "^22.0.0", "esbuild": "^0.24.0", "typescript": "^5.6.0" } }
+{
+  "name": "sidekick-vscode",
+  "displayName": "Sidekick",
+  "publisher": "sidekick",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "sidekick.skip",
+        "title": "Sidekick: Skip current narration"
+      },
+      {
+        "command": "sidekick.toggle.narrate",
+        "title": "Sidekick: Toggle narrate"
+      },
+      {
+        "command": "sidekick.toggle.listen",
+        "title": "Sidekick: Toggle listen"
+      },
+      {
+        "command": "sidekick.toggle.review",
+        "title": "Sidekick: Toggle review"
+      },
+      {
+        "command": "sidekick.toggle.whiteboard",
+        "title": "Sidekick: Toggle whiteboard"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "sidekick.skip",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js",
+    "watch": "npm run build -- --watch"
+  },
+  "dependencies": {
+    "@sidekick/shared": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.5.12",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}
