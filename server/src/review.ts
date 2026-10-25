@@ -14,6 +14,7 @@ Return ONLY a JSON array (no prose, no code fences) of at most 5 objects: {"line
 Rules:
 - Report only problems visible in the provided code; never speculate about code you were not shown. If unsure, use "warn" or "info".
 - Use "bug" only when you are confident the code is wrong.
+- A narrator already describes WHAT changed aloud, so do not restate the change. Lead with what goes wrong and the concrete consequence (for example: "a 10 percent discount would remove the entire price"), in one sentence.
 - Write each message in plain spoken English a listener can follow: no code symbols, no backticks, name things by what they do.
 - Return [] if you find nothing.`;
 

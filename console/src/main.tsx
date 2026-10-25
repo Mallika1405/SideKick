@@ -5,7 +5,7 @@ import { PcmPlayer } from './player';
 import { startMic, toBase64, type MicHandle } from './mic';
 import type { GraphData } from './Whiteboard';
 import { Board } from './Board';
-import { onDetail, onSketch } from './boardStore';
+import { onDetail, onNewNodes, onSketch } from './boardStore';
 import { ConvexProvider, ConvexReactClient, useQuery } from 'convex/react';
 import { anyApi } from 'convex/server';
 
@@ -71,7 +71,7 @@ function App() {
         else if (d.type === 'stop_playback') player.stop();
         else if (d.type === 'caption') setCaptions((c) => [...c.slice(-19), { role: d.role, text: d.text }]);
         else if (d.type === 'toggles') { setToggles({ ...ALL_ON, ...d.modes }); live.current.listen = d.modes.listen !== false; }
-        else if (d.type === 'graph') { if (!convex) setGraph({ nodes: d.nodes, edges: d.edges }); setNewKeys(d.newKeys); }
+        else if (d.type === 'graph') { if (!convex) setGraph({ nodes: d.nodes, edges: d.edges }); setNewKeys(d.newKeys); onNewNodes(d.newKeys); }
         else if (d.type === 'focus_node') { setFocusKey(d.nodeKey); setTimeout(() => setFocusKey((k) => (k === d.nodeKey ? null : k)), 6000); }
         else if (d.type === 'detail') onDetail(d);
         else if (d.type === 'sketch') onSketch(d.patch);

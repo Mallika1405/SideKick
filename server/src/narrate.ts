@@ -17,6 +17,7 @@ Rules for the spoken part:
 - ${LENGTH[v]}
 - Write for the ear: plain spoken English. Never read code symbols, punctuation, or long identifiers aloud; describe them ("the function that loads the data").
 - Say what changed, based only on the diff. Do not guess intent beyond what the diff shows.
+- Be neutral: describe the change, never judge whether it is correct, wrong, risky or a bug. A separate reviewer does that; do not pre-empt or repeat the reviewer's job.
 - If the diff touches code outside the provided context, say "I'm not sure" about that part.
 - Never name a function, class or variable that does not appear in the provided diff or context.
 Output format, exactly. One line per directive or spoken sentence:
