@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MODES, ServerMsg, type Mode, type Toggles, type Verbosity } from '@sidekick/shared';
 import { PcmPlayer } from './player';
-import { startMic, toBase64 } from './mic';
+import { startMic, toBase64, type MicHandle } from './mic';
 import type { GraphData } from './Whiteboard';
 import { Board } from './Board';
 import { onDetail, onSketch } from './boardStore';
@@ -36,6 +36,11 @@ function App() {
   const [verbosity, setVerbosity] = useState<Verbosity>('terse');
   const [captions, setCaptions] = useState<{ role: string; text: string }[]>([]);
   const [micOn, setMicOn] = useState(false);
+  const [micLabel, setMicLabel] = useState('');
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [deviceId, setDeviceId] = useState('');
+  const [processing, setProcessing] = useState(true);
+  const micRef = useRef<MicHandle>();
   const [micError, setMicError] = useState('');
   const [alwaysOn, setAlwaysOn] = useState(false);
   const [pttDown, setPttDown] = useState(false);
@@ -80,21 +85,27 @@ function App() {
     return () => { alive = false; wsRef.current?.close(); };
   }, []);
 
-  const enable = async () => {
-    await player.resume(); setArmed(true);
+  const onFrame = ({ pcm, rms }: { pcm: Int16Array; rms: number }) => {
+    const l = live.current, now = Date.now();
+    l.frames = (l.frames ?? 0) + 1;
+    if (l.frames % 5 === 0) setLevel(rms);
+    if (!l.listen) return;
+    const talking = l.ptt || (l.always && (!player.playing || rms > 0.08)); // while narration plays, always-on only passes loud speech (barge-in)
+    if (talking) { send({ type: 'mic', pcm: toBase64(pcm) }); l.sent = (l.sent ?? 0) + 1; if (l.sent % 5 === 0) setSent(l.sent); }
+    else if (now < l.tailUntil) send({ type: 'mic', pcm: toBase64(new Int16Array(pcm.length)) }); // trailing silence lets Ink end the turn
+  };
+
+  const openMic = async (id: string, proc: boolean) => {
+    micRef.current?.stop();
+    setMicError('');
     try {
-      await startMic(({ pcm, rms }) => {
-        const l = live.current, now = Date.now();
-        l.frames = (l.frames ?? 0) + 1;
-        if (l.frames % 5 === 0) setLevel(rms);
-        if (!l.listen) return;
-        const talking = l.ptt || (l.always && (!player.playing || rms > 0.08)); // while narration plays, always-on only passes loud speech (barge-in)
-        if (talking) { send({ type: 'mic', pcm: toBase64(pcm) }); l.sent = (l.sent ?? 0) + 1; if (l.sent % 5 === 0) setSent(l.sent); }
-        else if (now < l.tailUntil) send({ type: 'mic', pcm: toBase64(new Int16Array(pcm.length)) }); // trailing silence lets Ink end the turn
-      });
-      setMicOn(true);
+      const h = await startMic(onFrame, { deviceId: id || undefined, processing: proc });
+      micRef.current = h; setMicLabel(h.label); setDeviceId(h.deviceId); setMicOn(true);
+      setDevices((await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput')); // labels are only available after permission
     } catch (e) { setMicError((e as Error).message); }
   };
+
+  const enable = async () => { await player.resume(); setArmed(true); await openMic('', processing); };
 
   useEffect(() => {
     const set = (down: boolean) => {
@@ -139,6 +150,14 @@ function App() {
       {micError && <p style={{ color: '#c33' }}>Mic unavailable: {micError}. Narration still works; questions need the mic.</p>}
       {micOn && (
         <p>
+          <span style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>
+            Mic:{' '}
+            <select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); void openMic(e.target.value, processing); }} style={{ maxWidth: 260 }}>
+              {devices.length === 0 && <option value="">{micLabel || 'default'}</option>}
+              {devices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || 'input'}</option>)}
+            </select>{' '}
+            <label><input type="checkbox" checked={!processing} onChange={(e) => { setProcessing(!e.target.checked); void openMic(deviceId, !e.target.checked); }} /> raw mic (no echo cancel / noise suppression)</label>
+          </span>
           <b style={{ color: pttDown ? '#1f6feb' : 'inherit' }}>{pttDown ? 'Listening…' : 'Hold SPACE to talk'}</b>{' '}
           <label><input type="checkbox" checked={alwaysOn} onChange={(e) => { setAlwaysOn(e.target.checked); live.current.always = e.target.checked; }} /> always-on</label>
           <span style={{ marginLeft: 12, opacity: 0.7 }}>mic level {(level * 100).toFixed(0)} · frames sent {sent}{heard && ` · heard: “${heard}”`}</span>

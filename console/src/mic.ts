@@ -22,8 +22,14 @@ registerProcessor('down', Down);`;
 
 export type MicFrame = { pcm: Int16Array; rms: number };
 
-export async function startMic(onFrame: (f: MicFrame) => void): Promise<() => void> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+export type MicOptions = { deviceId?: string; processing: boolean };
+export type MicHandle = { stop: () => void; label: string; deviceId: string };
+
+export async function startMic(onFrame: (f: MicFrame) => void, opts: MicOptions = { processing: true }): Promise<MicHandle> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { deviceId: opts.deviceId ? { exact: opts.deviceId } : undefined, echoCancellation: opts.processing, noiseSuppression: opts.processing, autoGainControl: opts.processing, channelCount: 1 },
+  });
+  const track = stream.getAudioTracks()[0];
   const ctx = new AudioContext();
   if (ctx.state !== 'running') await ctx.resume();
   const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
@@ -37,7 +43,7 @@ export async function startMic(onFrame: (f: MicFrame) => void): Promise<() => vo
     onFrame({ pcm, rms: Math.sqrt(sum / pcm.length) });
   };
   src.connect(node);
-  return () => { stream.getTracks().forEach((t) => t.stop()); void ctx.close(); };
+  return { stop: () => { stream.getTracks().forEach((t) => t.stop()); void ctx.close(); }, label: track?.label || 'unknown input', deviceId: track?.getSettings().deviceId ?? '' };
 }
 
 export function toBase64(pcm: Int16Array): string {
