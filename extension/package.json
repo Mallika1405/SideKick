@@ -2,7 +2,7 @@
   "name": "sidekick-vscode",
   "displayName": "Sidekick",
   "publisher": "sidekick",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": false,
   "engines": {
     "vscode": "^1.90.0"
@@ -36,6 +36,10 @@
       {
         "command": "sidekick.openBoard",
         "title": "Sidekick: Open Whiteboard"
+      },
+      {
+        "command": "sidekick.showLog",
+        "title": "Sidekick: Show Log"
       }
     ],
     "keybindings": [

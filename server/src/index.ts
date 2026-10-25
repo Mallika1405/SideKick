@@ -353,6 +353,7 @@ wss.on('connection', (ws, req) => {
       }
       case 'explain': explainTarget(m.target); break;
       case 'active_file': {
+        console.log(`[active] ${m.file}:${m.line}${Date.now() - lastPresentAt < 12_000 ? ' (ignored: narrator is presenting)' : ''}${root && m.file.startsWith(root) ? '' : ' (ignored: outside project root ' + root + ')'}`);
         if (Date.now() - lastPresentAt < 12_000 || !root || !m.file.startsWith(root)) break; // don't fight the narrator
         const rel = isoRel(m.file);
         void sendDetail({ level: 'file', file: rel, line: m.line }, 'editor', { file: rel, line: m.line });

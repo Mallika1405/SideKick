@@ -13,6 +13,7 @@ const toggles: Record<Mode, boolean> = { narrate: true, listen: true, review: tr
 const items = new Map<Mode, vscode.StatusBarItem>();
 let connItem: vscode.StatusBarItem;
 let clearTimer: NodeJS.Timeout | undefined;
+let log: vscode.OutputChannel;
 let suppressActiveUntil = 0; // our own highlight() switches files; don't report that back as the user's choice
 let activeTimer: NodeJS.Timeout | undefined;
 let boardPanel: vscode.WebviewPanel | undefined;
@@ -93,9 +94,16 @@ async function highlight(file: string, start: number, end: number) {
   clearTimer = setTimeout(() => { for (const e of vscode.window.visibleTextEditors) e.setDecorations(highlightType, []); }, 8000);
 }
 
+function reportNow(editor: vscode.TextEditor | undefined) {
+  if (!editor || editor.document.uri.scheme !== 'file') return;
+  const m = { type: 'active_file', file: editor.document.uri.fsPath, line: editor.selection.active.line + 1 };
+  log.appendLine(`active_file ${m.file}:${m.line}`);
+  send(m);
+}
+
 function connect() {
   ws = new WebSocket('ws://localhost:4317/ws?role=extension');
-  ws.on('open', () => { online = true; render(); });
+  ws.on('open', () => { online = true; render(); log.appendLine('connected to server'); reportNow(vscode.window.activeTextEditor); });
   ws.on('close', () => { online = false; render(); setTimeout(connect, 2000); });
   ws.on('error', () => { /* close handler reconnects */ });
   ws.on('message', (raw) => {
@@ -112,6 +120,8 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.window.onDidChangeVisibleTextEditors((es) => es.forEach(renderIssues)),
     ...Object.values(issueTypes),
   );
+  log = vscode.window.createOutputChannel('Sidekick');
+  ctx.subscriptions.push(log, vscode.commands.registerCommand('sidekick.showLog', () => log.show(true)));
   connItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 110);
   connItem.command = 'sidekick.skip';
   connItem.tooltip = 'Sidekick: click to skip current narration';
@@ -134,12 +144,14 @@ export function activate(ctx: vscode.ExtensionContext) {
 
   // Tell the server which file/function the user is on so the whiteboard can follow along.
   const reportActive = (editor: vscode.TextEditor | undefined) => {
-    if (!editor || editor.document.uri.scheme !== 'file' || Date.now() < suppressActiveUntil) return;
+    if (!editor || editor.document.uri.scheme !== 'file') return;
+    if (Date.now() < suppressActiveUntil) { log.appendLine(`(suppressed own switch to ${editor.document.uri.fsPath})`); return; }
     clearTimeout(activeTimer);
-    activeTimer = setTimeout(() => send({ type: 'active_file', file: editor.document.uri.fsPath, line: editor.selection.active.line + 1 }), 500);
+    activeTimer = setTimeout(() => reportNow(editor), 400);
   };
   ctx.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(reportActive),
+    vscode.window.onDidChangeVisibleTextEditors(() => reportActive(vscode.window.activeTextEditor)),
     vscode.window.onDidChangeTextEditorSelection((e) => reportActive(e.textEditor)),
   );
 
