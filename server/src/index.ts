@@ -153,12 +153,22 @@ function ask(question: string) {
 }
 
 function onStt(ev: SttEvent) {
+  console.log('[stt]', ev.type, ev.transcript ?? ev.message ?? '');
+  if (ev.transcript) sendTo(consoles, { type: 'heard', text: ev.transcript });
   if (!state.toggles.listen) return;
   if (ev.type === 'turn.start') { speaker.interrupt(); } // barge-in: stops audio, cancels Claude stream + TTS context
   else if (ev.type === 'turn.eager_end' && ev.transcript?.trim()) eager = { transcript: ev.transcript, hits: retrieve(ev.transcript) };
   else if (ev.type === 'turn.resume') eager = null;
   else if (ev.type === 'turn.end' && ev.transcript && ev.transcript.trim().length > 1) ask(ev.transcript.trim());
   else if (ev.type === 'error') console.error('[stt]', ev);
+}
+let micFrames = 0, micPeak = 0, micSumSq = 0, micSamples = 0;
+setInterval(() => {
+  if (micFrames) console.log(`[mic] ${micFrames} frames/5s rms=${Math.sqrt(micSumSq / micSamples).toFixed(4)} peak=${micPeak.toFixed(3)}`);
+  micFrames = 0; micPeak = 0; micSumSq = 0; micSamples = 0;
+}, 5000);
+function measure(buf: Buffer) {
+  for (let i = 0; i + 1 < buf.length; i += 2) { const v = buf.readInt16LE(i) / 32768; micSumSq += v * v; micSamples++; if (Math.abs(v) > micPeak) micPeak = Math.abs(v); }
 }
 const stt = new SttSession(process.env.CARTESIA_API_KEY ?? '', onStt);
 
@@ -188,7 +198,7 @@ wss.on('connection', (ws, req) => {
       case 'verbosity': state.verbosity = m.level; toAll({ type: 'settings', verbosity: m.level }); break;
       case 'skip': speaker.skip(); break;
       case 'ptt': if (m.down) stt.warm(); break;
-      case 'mic': if (state.toggles.listen) void stt.send(Buffer.from(m.pcm, 'base64')); break;
+      case 'mic': { micFrames++; const b = Buffer.from(m.pcm, 'base64'); measure(b); if (state.toggles.listen) void stt.send(b); break; }
       default: break;
     }
   });

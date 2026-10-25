@@ -37,6 +37,7 @@ export const ServerMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('audio_end'), utteranceId: z.string() }),
   z.object({ type: z.literal('stop_playback') }),
   z.object({ type: z.literal('caption'), role: z.enum(['narrator', 'reviewer', 'user']), text: z.string() }),
+  z.object({ type: z.literal('heard'), text: z.string() }),
   z.object({ type: z.literal('moss'), count: z.number(), ms: z.number() }),
   z.object({ type: z.literal('focus_node'), nodeKey: z.string() }),
 ]);

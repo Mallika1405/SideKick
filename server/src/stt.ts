@@ -13,7 +13,7 @@ export class SttSession {
     if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve(this.ws);
     if (this.opening) return this.opening;
     this.opening = new Promise((resolve, reject) => {
-      const url = `wss://api.cartesia.ai/stt/turns/websocket?model=ink-2&encoding=pcm_s16le&sample_rate=16000&cartesia_version=${VERSION}`;
+      const url = `wss://api.cartesia.ai/stt/turns/websocket?model=ink-2&encoding=pcm_s16le&sample_rate=16000&turn_start_threshold=0.5&turn_eager_end_threshold=0.4&cartesia_version=${VERSION}`;
       const ws = new WebSocket(url, { headers: { Authorization: `Bearer ${this.apiKey}`, 'Cartesia-Version': VERSION } });
       ws.on('open', () => { this.ws = ws; this.opening = null; resolve(ws); });
       ws.on('error', (e) => { this.opening = null; console.error('[stt] socket error', e.message); reject(e); });

@@ -17,9 +17,12 @@ function App() {
   const [micError, setMicError] = useState('');
   const [alwaysOn, setAlwaysOn] = useState(false);
   const [pttDown, setPttDown] = useState(false);
+  const [sent, setSent] = useState(0);
+  const [level, setLevel] = useState(0);
+  const [heard, setHeard] = useState('');
   const [moss, setMoss] = useState<{ count: number; ms: number } | null>(null);
   const wsRef = useRef<WebSocket>();
-  const live = useRef({ ptt: false, always: false, tailUntil: 0, listen: true });
+  const live = useRef<{ ptt: boolean; always: boolean; tailUntil: number; listen: boolean; frames?: number; sent?: number }>({ ptt: false, always: false, tailUntil: 0, listen: true });
   const send = (m: object) => wsRef.current?.readyState === WebSocket.OPEN && wsRef.current.send(JSON.stringify(m));
 
   useEffect(() => {
@@ -37,6 +40,7 @@ function App() {
         else if (d.type === 'stop_playback') player.stop();
         else if (d.type === 'caption') setCaptions((c) => [...c.slice(-19), { role: d.role, text: d.text }]);
         else if (d.type === 'toggles') { setToggles({ ...ALL_ON, ...d.modes }); live.current.listen = d.modes.listen !== false; }
+        else if (d.type === 'heard') setHeard(d.text);
         else if (d.type === 'moss') setMoss({ count: d.count, ms: d.ms });
         else if (d.type === 'settings') setVerbosity(d.verbosity);
       };
@@ -50,9 +54,11 @@ function App() {
     try {
       await startMic(({ pcm, rms }) => {
         const l = live.current, now = Date.now();
+        l.frames = (l.frames ?? 0) + 1;
+        if (l.frames % 5 === 0) setLevel(rms);
         if (!l.listen) return;
         const talking = l.ptt || (l.always && (!player.playing || rms > 0.08)); // while narration plays, always-on only passes loud speech (barge-in)
-        if (talking) send({ type: 'mic', pcm: toBase64(pcm) });
+        if (talking) { send({ type: 'mic', pcm: toBase64(pcm) }); l.sent = (l.sent ?? 0) + 1; if (l.sent % 5 === 0) setSent(l.sent); }
         else if (now < l.tailUntil) send({ type: 'mic', pcm: toBase64(new Int16Array(pcm.length)) }); // trailing silence lets Ink end the turn
       });
       setMicOn(true);
@@ -93,6 +99,7 @@ function App() {
         <p>
           <b style={{ color: pttDown ? '#1f6feb' : 'inherit' }}>{pttDown ? 'Listening…' : 'Hold SPACE to talk'}</b>{' '}
           <label><input type="checkbox" checked={alwaysOn} onChange={(e) => { setAlwaysOn(e.target.checked); live.current.always = e.target.checked; }} /> always-on</label>
+          <span style={{ marginLeft: 12, opacity: 0.7 }}>mic level {(level * 100).toFixed(0)} · frames sent {sent}{heard && ` · heard: “${heard}”`}</span>
           {moss && <span style={{ marginLeft: 12, padding: '2px 8px', borderRadius: 10, background: '#2a2a2a22' }}>retrieval: {moss.count} chunks · {moss.ms} ms</span>}
         </p>
       )}
