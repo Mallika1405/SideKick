@@ -20,17 +20,26 @@ let boardPanel: vscode.WebviewPanel | undefined;
 const CONSOLE_URL = 'http://localhost:5173/?board=1';
 
 /** Whiteboard inside the editor: the console's board-only view in a webview iframe (mic/audio stay in the browser tab). */
-async function openBoard() {
-  if (boardPanel) { boardPanel.reveal(vscode.ViewColumn.Beside, true); return; }
-  const src = (await vscode.env.asExternalUri(vscode.Uri.parse(CONSOLE_URL))).toString(true);
-  boardPanel = vscode.window.createWebviewPanel('sidekickBoard', 'Sidekick Whiteboard', { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true }, { enableScripts: true, retainContextWhenHidden: true });
-  boardPanel.onDidDispose(() => (boardPanel = undefined));
-  boardPanel.webview.html = `<!doctype html><html><head><meta charset="UTF-8">
+let boardOpening: Promise<void> | undefined;
+let boardEpoch = 0; // bumped on every close so an open still waiting on async work knows it was cancelled
+async function openBoard(force = false) {
+  if (boardPanel) { if (force) boardPanel.reveal(vscode.ViewColumn.Beside, true); return; }
+  if (boardOpening) return boardOpening; // several `toggles` messages can arrive at once: only ever create one panel
+  const epoch = boardEpoch;
+  boardOpening = (async () => {
+    const src = (await vscode.env.asExternalUri(vscode.Uri.parse(CONSOLE_URL))).toString(true);
+    if (boardPanel || epoch !== boardEpoch || (!force && !toggles.whiteboard)) return; // closed or switched off while we waited
+    const panel = vscode.window.createWebviewPanel('sidekickBoard', 'Sidekick Whiteboard', { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true }, { enableScripts: true, retainContextWhenHidden: true });
+    boardPanel = panel;
+    panel.onDidDispose(() => { if (boardPanel === panel) boardPanel = undefined; });
+    panel.webview.html = `<!doctype html><html><head><meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http://localhost:* http://127.0.0.1:* https:; style-src 'unsafe-inline';">
 <style>html,body{margin:0;height:100%;background:#fff}iframe{border:0;width:100%;height:100%}</style></head>
 <body><iframe src="${src}"></iframe></body></html>`;
+  })().finally(() => { boardOpening = undefined; });
+  return boardOpening;
 }
-function closeBoard() { boardPanel?.dispose(); }
+function closeBoard() { boardEpoch++; boardPanel?.dispose(); boardPanel = undefined; }
 const highlightType = vscode.window.createTextEditorDecorationType({
   backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
   isWholeLine: true,
@@ -137,7 +146,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   });
   ctx.subscriptions.push(
     vscode.commands.registerCommand('sidekick.skip', () => send({ type: 'skip' })),
-    vscode.commands.registerCommand('sidekick.openBoard', () => openBoard()),
+    vscode.commands.registerCommand('sidekick.openBoard', () => openBoard(true)),
   );
   render();
   connect();

@@ -46,7 +46,7 @@ npm run console             # console on http://localhost:5173
 
 **Convex (optional):** `node node_modules/convex/bin/main.js dev`, then put the printed URL in `.env` as `CONVEX_URL`.
 
-**Editor extension:** `npm run ext:build -w extension`, then either press F5 on the `extension/` folder in VS Code, or install `extension/sidekick-0.0.2.vsix` (built with `vsce package`).
+**Editor extension:** `npm run ext:build -w extension`, then either press F5 on the `extension/` folder in VS Code, or install `extension/sidekick-0.0.3.vsix` (built with `vsce package`).
 
 **Whiteboard views:** the board switches itself as things happen (a green dot marks a tab with fresh content), and clicking a tab pins your choice for 20 seconds.
 - *Map*: click a component to hear about it and open its Detail.
