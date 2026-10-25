@@ -6,7 +6,7 @@ import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { ClientMsg, SERVER_PORT, type Edit, type Issue, type ServerMsg } from '@sidekick/shared';
-import { shadow, snapshot, readText } from './shadow.js';
+import { shadow, snapshot, readText, rescan } from './shadow.js';
 import { lineRange, unified, contextAround } from './diffing.js';
 import { Batcher } from './batcher.js';
 import { Speaker } from './speaker.js';
@@ -135,6 +135,12 @@ const PostToolUse = HookBase.extend({
   tool_input: z.object({ file_path: z.string().optional(), old_string: z.string().optional(), new_string: z.string().optional() }).passthrough().optional(),
 });
 
+/** Record any on-disk changes the hooks did not report (e.g. files written via Bash). */
+function rescanAs(source: Edit['source']) {
+  if (!root) return;
+  for (const c of rescan(root)) recordEdit(c.file, c.before, c.after, source);
+}
+
 function onHook(kind: string, raw: string) {
   let json: unknown;
   try { json = JSON.parse(raw); } catch { return console.warn('[hook] non-JSON body'); }
@@ -146,11 +152,11 @@ function onHook(kind: string, raw: string) {
     if (fresh) void codeIndex.indexAll(root);
   }
   if (kind === 'prompt') state.lastPrompt = String((json as { prompt?: unknown }).prompt ?? '').slice(0, 1000);
-  else if (kind === 'stop') { batcher.flush(); if (state.toggles.whiteboard) void graphSvc.update(); }
+  else if (kind === 'stop') { rescanAs('claude'); batcher.flush(); if (state.toggles.whiteboard) void graphSvc.update(); }
   else if (kind === 'post-tool-use') {
     const p = PostToolUse.safeParse(json);
     const file = p.success ? p.data.tool_input?.file_path : undefined;
-    if (!p.success || !file) return console.warn('[hook] post-tool-use without file_path');
+    if (!p.success || !file) { rescanAs('claude'); return; } // Bash or another tool: find what changed on disk
     const after = readText(file);
     if (after === null) return;
     // Prefer our shadow copy as "before"; else reconstruct it from old/new strings.

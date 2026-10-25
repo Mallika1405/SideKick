@@ -32,3 +32,24 @@ export function snapshot(root: string) {
   walk(root);
   console.log(`[shadow] ${n} files from ${root}`);
 }
+
+/** Finds files that differ from the shadow copy (new or changed) and updates the shadow. Catches edits made by Bash or any non-Edit tool. */
+export function rescan(root: string): { file: string; before: string; after: string }[] {
+  const changes: { file: string; before: string; after: string }[] = [];
+  let n = 0;
+  const walk = (dir: string) => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (n++ > 3000) return;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(p); continue; }
+      const t = readText(p);
+      if (t === null || t.includes('\0')) continue;
+      const before = shadow.get(p);
+      if (before !== t) changes.push({ file: p, before: before ?? '', after: t });
+    }
+  };
+  walk(root);
+  return changes;
+}
