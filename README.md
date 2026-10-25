@@ -4,7 +4,7 @@ A voice-first companion for AI-assisted coding, built at Cal Hacks 13.0. While C
 
 1. **Narrates** each change in plain spoken language, generated from the actual diff.
 2. **Answers spoken questions** about the code, with file and line citations.
-3. **Flags likely bugs** aloud (second voice) and as squiggles in the editor.
+3. **Flags likely bugs** aloud (second voice) and as colored line highlights in the editor (red = bug, orange = warn, blue = info), separate from the language server's squiggles.
 4. **Keeps a live architecture whiteboard** you can click or ask about.
 
 Each mode toggles independently (editor status bar and console header). Target user: undergraduate researchers who use Claude Code for analysis scripts and have to defend the results. The demo repo (`demo-repo/`) is a 60-file pandas/scikit-learn project on sleep vs exam scores.
@@ -79,7 +79,7 @@ npm run console             # console on http://localhost:5173
 
 ## Known limitations
 
-- **Editor extension is untested in a live editor.** It compiles and packages to a VSIX, but neither VS Code nor Cursor was installed on the development machine, so install, status-bar toggles, highlights and squiggles have not been exercised. The server side of those messages was tested with scripted WebSocket clients.
+- **Editor extension is untested in a live editor.** It compiles and packages to a VSIX, but neither VS Code nor Cursor was installed on the development machine, so install, status-bar toggles, highlights and issue marks have not been exercised. The server side of those messages was tested with scripted WebSocket clients.
 - **Hook payloads:** `PostToolUse` handling relies only on `tool_input.file_path`; before-text comes from a server-side shadow copy of the repo taken when the first prompt/hook arrives. Edits made before that snapshot, files over 300 KB, binary files and ignored files are not diffed. The Edit tool's input fields (`file_path`, `old_string`, `new_string`, `replace_all`) were read from a real session transcript, not from a saved hook payload.
 - **Moss is untested.** It needs project keys that were not available; all retrieval testing used the keyword fallback. The Moss code is typed against the installed SDK but has never run.
 - **Voice:** tested end to end with a scripted, synthesised question and with a live microphone in one session. Always-on mode uses a guessed loudness threshold (0.08) to detect barge-in over playback, and may need tuning per room/mic. Narration is not interruptible mid-sentence by anything but speech, skip, or a new question. Only English was considered.
