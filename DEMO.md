@@ -7,7 +7,7 @@ Covers: **narrator, reviewer, listener**, and the whiteboard's **Map, Detail and
 
 1. Reset the project and start the server (leave it running):
    ```bash
-   cd /Users/mallika/SideKick && ./scripts/reset-demo.sh >/dev/null; ./scripts/new-demo.sh && npm run demo:server
+   cd /Users/mallika/SideKick && ./scripts/new-demo.sh && npm run demo:server
    ```
 2. In VS Code (extension 0.0.5+, `sidekick.nativeAudio` on): **File > Open Folder** `/Users/mallika/SideKick/demo-fresh`. The whiteboard panel opens beside the editor. Status bar should show **Talk** (not "Mic off").
 3. Only if you use the browser tab instead of native audio: `npm run console`, open http://localhost:5173, click **Enable audio + mic**.
