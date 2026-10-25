@@ -14,6 +14,18 @@ const mode = z.enum(['narrate', 'listen', 'review', 'whiteboard']);
 const toggles = z.record(mode, z.boolean());
 const issue = z.object({ id: z.string(), file: z.string(), line: z.number(), severity: z.enum(['info', 'warn', 'bug']), message: z.string(), spoken: z.boolean() });
 
+export const GraphNodeSchema = z.object({
+  key: z.string().min(1), label: z.string(), kind: z.enum(['module', 'service', 'data', 'ui']), summary: z.string(), files: z.array(z.string()),
+});
+export const GraphPatchSchema = z.object({
+  addNodes: z.array(GraphNodeSchema).default([]),
+  updateNodes: z.array(GraphNodeSchema.partial().extend({ key: z.string() })).default([]),
+  addEdges: z.array(z.object({ from: z.string(), to: z.string(), label: z.string() })).default([]),
+  remove: z.array(z.string()).default([]),
+});
+export type GraphEdge = { from: string; to: string; label: string };
+export type GraphState = { nodes: GraphNode[]; edges: GraphEdge[] };
+
 // Extension/Console -> server
 export const ClientMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('edit'), file: z.string(), before: z.string(), after: z.string(), ts: z.number() }),
@@ -39,6 +51,7 @@ export const ServerMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('caption'), role: z.enum(['narrator', 'reviewer', 'user']), text: z.string() }),
   z.object({ type: z.literal('heard'), text: z.string() }),
   z.object({ type: z.literal('moss'), count: z.number(), ms: z.number() }),
+  z.object({ type: z.literal('graph'), nodes: z.array(GraphNodeSchema), edges: z.array(z.object({ from: z.string(), to: z.string(), label: z.string() })), newKeys: z.array(z.string()).default([]) }),
   z.object({ type: z.literal('focus_node'), nodeKey: z.string() }),
 ]);
 export type ServerMsg = z.infer<typeof ServerMsg>;

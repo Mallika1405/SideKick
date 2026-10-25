@@ -2,10 +2,18 @@
   "name": "sidekick",
   "private": true,
   "version": "0.0.1",
-  "workspaces": ["shared", "server", "console", "extension"],
+  "workspaces": [
+    "shared",
+    "server",
+    "console",
+    "extension"
+  ],
   "scripts": {
     "server": "npm run dev -w server",
     "console": "npm run dev -w console",
     "ext:build": "npm run build -w extension"
+  },
+  "dependencies": {
+    "convex": "^1.48.0"
   }
 }

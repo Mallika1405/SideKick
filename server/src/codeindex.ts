@@ -24,5 +24,6 @@ export class CodeIndex {
     console.log(`[index] ${n} files via ${this.retriever.name} in ${Date.now() - t0}ms`);
   }
   async addNote(doc: Doc) { await this.retriever.upsert([doc]); }
+  async addNotes(docs: Doc[]) { await this.retriever.upsert(docs); }
   query(text: string, topK = 5) { return this.retriever.query(text, topK); }
 }

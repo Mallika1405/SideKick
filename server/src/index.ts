@@ -18,6 +18,8 @@ import { createRetriever } from './retriever.js';
 import { CodeIndex } from './codeindex.js';
 import { SttSession, type SttEvent } from './stt.js';
 import { answer } from './answer.js';
+import { ConvexStore, MemoryStore, type Store } from './store.js';
+import { GraphService, describeGraph } from './graph.js';
 
 const samplesDir = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'samples');
 mkdirSync(samplesDir, { recursive: true });
@@ -30,6 +32,22 @@ setBroadcast((m) => sendTo(consoles, m));
 const speaker = new Speaker((m) => sendTo(consoles, m));
 let root = '';
 const codeIndex = new CodeIndex(await createRetriever(), () => root);
+const store: Store = process.env.CONVEX_URL ? new ConvexStore(process.env.CONVEX_URL, process.env.SIDEKICK_ROOT ?? 'demo-repo') : new MemoryStore();
+console.log(`[store] ${store.name}`);
+let graphSummary = '';
+const graphSvc = new GraphService(store, (g, newKeys) => {
+  graphSummary = describeGraph(g);
+  sendTo(consoles, { type: 'graph', nodes: g.nodes, edges: g.edges, newKeys });
+  void codeIndex.addNotes(g.nodes.map((n) => ({ id: `graph:${n.key}`, text: `Architecture component ${n.label}: ${n.summary} Files: ${n.files.join(', ')}`, metadata: { file: n.files[0] ?? '', startLine: '1', endLine: '1', kind: 'graph' as const } })));
+}, () => {
+  const lines: string[] = [];
+  for (const [file, text] of shadow) {
+    if (!file.startsWith(root) || !/\.(py|ts|js|tsx)$/.test(file)) continue;
+    const names = [...text.matchAll(/^(?:async\s+)?(?:def|class)\s+(\w+)/gm)].map((m) => m[1]).slice(0, 6);
+    lines.push(`${codeIndex.rel(file)}${names.length ? ': ' + names.join(', ') : ''}`);
+  }
+  return lines.join('\n');
+});
 const recentEdits: { edit: Edit; diff: string }[] = [];
 
 // ---- narration pipeline -------------------------------------------------
@@ -53,6 +71,7 @@ const batcher = new Batcher((batch) => {
       }, ac.signal);
       state.lastNarrations.push(text);
       const h = changes[0];
+      void store.recordNarration({ editIds: [], text, file: h.file, start: 0, end: 0 });
       void codeIndex.addNote({ id: `narration:${Date.now()}`, text: `Narration of change to ${codeIndex.rel(h.file)}: ${text}`, metadata: { file: h.file, startLine: '1', endLine: '1', kind: 'narration' } });
       await utt.end();
     } catch (e) { if (!ac.signal.aborted) console.error('[narrate]', e); utt.cancel(); }
@@ -67,6 +86,8 @@ function recordEdit(file: string, before: string, after: string, source: Edit['s
   recentEdits.push({ edit: e, diff: unified(codeIndex.rel(file), before, after).split('\n').slice(0, 40).join('\n') });
   if (recentEdits.length > 5) recentEdits.shift();
   void codeIndex.indexFile(file, after);
+  void store.recordEdit(e);
+  if (state.toggles.whiteboard) graphSvc.noteEdit(recentEdits.at(-1)!.diff);
   void codeIndex.addNote({ id: `edit:${e.id}`, text: `Edit to ${codeIndex.rel(file)} lines ${e.startLine}-${e.endLine}\n${recentEdits.at(-1)!.diff}`, metadata: { file, startLine: String(e.startLine), endLine: String(e.endLine), kind: 'edit' } });
 }
 
@@ -88,7 +109,7 @@ function onHook(kind: string, raw: string) {
     if (fresh) void codeIndex.indexAll(root);
   }
   if (kind === 'prompt') state.lastPrompt = String((json as { prompt?: unknown }).prompt ?? '').slice(0, 1000);
-  else if (kind === 'stop') batcher.flush();
+  else if (kind === 'stop') { batcher.flush(); if (state.toggles.whiteboard) void graphSvc.update(); }
   else if (kind === 'post-tool-use') {
     const p = PostToolUse.safeParse(json);
     const file = p.success ? p.data.tool_input?.file_path : undefined;
@@ -130,8 +151,8 @@ async function retrieve(question: string) {
   return r;
 }
 
-function ask(question: string) {
-  sendTo(consoles, { type: 'caption', role: 'user', text: question });
+function ask(question: string, fromNode = false) {
+  sendTo(consoles, { type: 'caption', role: 'user', text: fromNode ? `(clicked) ${question}` : question });
   const pre = eager && norm(eager.transcript) === norm(question) ? eager.hits : null;
   eager = null;
   speaker.enqueue('answer', async (register) => {
@@ -144,12 +165,20 @@ function ask(question: string) {
         question,
         chunks: hits.map((h) => ({ rel: codeIndex.rel(h.metadata.file), start: +h.metadata.startLine, end: +h.metadata.endLine, text: h.text })),
         recentEdits: recentEdits.map((r) => r.diff),
-        graphSummary: '',
-      }, (s) => utt.push(s), ac.signal);
+        graphSummary,
+      }, (s) => utt.push(s), ac.signal, (nodeKey) => { if (!fromNode) sendTo(consoles, { type: 'focus_node', nodeKey }); });
       state.lastNarrations.push(`(answered question) ${text}`);
       await utt.end();
     } catch (e) { if (!ac.signal.aborted) console.error('[answer]', e); utt.cancel(); }
   });
+}
+
+async function askNode(nodeKey: string) {
+  const g = await store.getGraph();
+  const node = g.nodes.find((n) => n.key === nodeKey);
+  if (!node) return;
+  sendTo(consoles, { type: 'focus_node', nodeKey });
+  ask(`Explain the ${node.label} part of the project: ${node.summary}`, true);
 }
 
 function onStt(ev: SttEvent) {
@@ -197,6 +226,8 @@ wss.on('connection', (ws, req) => {
       case 'toggle': state.toggles[m.mode] = m.on; toAll({ type: 'toggles', modes: state.toggles }); break;
       case 'verbosity': state.verbosity = m.level; toAll({ type: 'settings', verbosity: m.level }); break;
       case 'skip': speaker.skip(); break;
+      case 'hello': if (role !== 'extension' && state.toggles.whiteboard) void graphSvc.bootstrapIfEmpty(); break;
+      case 'ask_node': askNode(m.nodeKey); break;
       case 'ptt': if (m.down) stt.warm(); break;
       case 'mic': { micFrames++; const b = Buffer.from(m.pcm, 'base64'); measure(b); if (state.toggles.listen) void stt.send(b); break; }
       default: break;

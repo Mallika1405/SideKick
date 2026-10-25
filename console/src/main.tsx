@@ -3,6 +3,19 @@ import { createRoot } from 'react-dom/client';
 import { MODES, ServerMsg, type Mode, type Toggles, type Verbosity } from '@sidekick/shared';
 import { PcmPlayer } from './player';
 import { startMic, toBase64 } from './mic';
+import { Whiteboard, type GraphData } from './Whiteboard';
+import { ConvexProvider, ConvexReactClient, useQuery } from 'convex/react';
+import { anyApi } from 'convex/server';
+
+const CONVEX_URL = import.meta.env.CONVEX_URL as string | undefined;
+const convex = CONVEX_URL ? new ConvexReactClient(CONVEX_URL) : null;
+
+/** When Convex is configured the whiteboard is driven by useQuery; the server's WS graph messages are ignored. */
+function ConvexBridge({ onGraph }: { onGraph: (g: GraphData) => void }) {
+  const g = useQuery(anyApi.sidekick.latestGraph) as GraphData | undefined;
+  useEffect(() => { if (g) onGraph(g); }, [g, onGraph]);
+  return null;
+}
 
 const player = new PcmPlayer();
 const ALL_ON: Toggles = { narrate: true, listen: true, review: true, whiteboard: true };
@@ -17,6 +30,9 @@ function App() {
   const [micError, setMicError] = useState('');
   const [alwaysOn, setAlwaysOn] = useState(false);
   const [pttDown, setPttDown] = useState(false);
+  const [graph, setGraph] = useState<GraphData>({ nodes: [], edges: [] });
+  const [newKeys, setNewKeys] = useState<string[]>([]);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
   const [sent, setSent] = useState(0);
   const [level, setLevel] = useState(0);
   const [heard, setHeard] = useState('');
@@ -40,6 +56,8 @@ function App() {
         else if (d.type === 'stop_playback') player.stop();
         else if (d.type === 'caption') setCaptions((c) => [...c.slice(-19), { role: d.role, text: d.text }]);
         else if (d.type === 'toggles') { setToggles({ ...ALL_ON, ...d.modes }); live.current.listen = d.modes.listen !== false; }
+        else if (d.type === 'graph') { if (!convex) setGraph({ nodes: d.nodes, edges: d.edges }); setNewKeys(d.newKeys); }
+        else if (d.type === 'focus_node') { setFocusKey(d.nodeKey); setTimeout(() => setFocusKey((k) => (k === d.nodeKey ? null : k)), 6000); }
         else if (d.type === 'heard') setHeard(d.text);
         else if (d.type === 'moss') setMoss({ count: d.count, ms: d.ms });
         else if (d.type === 'settings') setVerbosity(d.verbosity);
@@ -83,7 +101,8 @@ function App() {
   const btn = (on: boolean): React.CSSProperties => ({ padding: '4px 10px', borderRadius: 6, border: '1px solid #888', background: on ? '#1f6feb' : 'transparent', color: on ? '#fff' : 'inherit', cursor: 'pointer' });
 
   return (
-    <div style={{ fontFamily: 'system-ui', maxWidth: 720, margin: '1.5rem auto', padding: '0 1rem' }}>
+    <div style={{ fontFamily: 'system-ui', display: 'grid', gridTemplateColumns: toggles.whiteboard ? 'minmax(320px, 440px) 1fr' : '1fr', gap: 16, height: '100vh', padding: '1rem', boxSizing: 'border-box' }}>
+      <div style={{ overflowY: 'auto' }}>
       <header style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0, marginRight: 'auto' }}>Sidekick</h1>
         {(MODES as Mode[]).map((m) => <button key={m} style={btn(toggles[m])} onClick={() => send({ type: 'toggle', mode: m, on: !toggles[m] })}>{m}</button>)}
@@ -105,7 +124,14 @@ function App() {
       )}
       {captions.length === 0 && <p style={{ opacity: 0.6 }}>Nothing yet. Edit a file in the demo repo and I'll narrate it.</p>}
       <ul>{captions.map((c, i) => <li key={i}><b>{c.role}:</b> {c.text}</li>)}</ul>
+      </div>
+      {convex && <ConvexBridge onGraph={setGraph} />}
+      {toggles.whiteboard && (
+        <div style={{ border: '1px solid #8884', borderRadius: 8, overflow: 'hidden', height: 'calc(100vh - 2rem)' }}>
+          <Whiteboard graph={graph} newKeys={newKeys} focusKey={focusKey} onAsk={(key) => send({ type: 'ask_node', nodeKey: key })} />
+        </div>
+      )}
     </div>
   );
 }
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(convex ? <ConvexProvider client={convex}><App /></ConvexProvider> : <App />);
