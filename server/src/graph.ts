@@ -32,7 +32,7 @@ export async function requestPatch(current: GraphState, material: string): Promi
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) { // retry once on invalid JSON
     const msg = await client.messages.create({
-      model: GRAPH_MODEL, max_tokens: 2500, thinking: { type: 'disabled' }, system: SYSTEM,
+      model: GRAPH_MODEL, max_tokens: 2500, thinking: { type: 'between_tools' }, system: SYSTEM,
       messages: [{ role: 'user', content: attempt ? `${user}\n\nYour previous reply was not valid. Return ONLY the JSON object.` : user }],
     });
     const text = msg.content.map((c) => (c.type === 'text' ? c.text : '')).join('');
