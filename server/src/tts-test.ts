@@ -1,3 +1,4 @@
+import './env.js';
 import { CartesiaTts, TTS_SAMPLE_RATE } from './cartesia.js';
 import { writeFileSync } from 'node:fs';
 const tts = new CartesiaTts(process.env.CARTESIA_API_KEY!, { narrator: process.env.CARTESIA_NARRATOR_VOICE_ID!, reviewer: process.env.CARTESIA_REVIEWER_VOICE_ID! });

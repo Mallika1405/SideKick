@@ -1,3 +1,4 @@
+import './env.js';
 import { createServer, IncomingMessage } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { mkdirSync, writeFileSync } from 'node:fs';

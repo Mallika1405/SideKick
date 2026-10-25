@@ -22,7 +22,7 @@ export class CartesiaTts {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return Promise.resolve(this.ws);
     if (this.opening) return this.opening;
     this.opening = new Promise((resolve, reject) => {
-      const ws = new WebSocket(`wss://api.cartesia.ai/tts/websocket?cartesia_version=${CARTESIA_VERSION}`, { headers: { 'X-API-Key': this.apiKey } });
+      const ws = new WebSocket(`wss://api.cartesia.ai/tts/websocket?cartesia_version=${CARTESIA_VERSION}`, { headers: { Authorization: `Bearer ${this.apiKey}`, 'Cartesia-Version': CARTESIA_VERSION } });
       ws.on('open', () => { this.ws = ws; this.opening = null; resolve(ws); });
       ws.on('error', (e) => { this.opening = null; reject(e); });
       ws.on('close', () => { this.ws = null; for (const c of this.ctxs.values()) c.resolve(); this.ctxs.clear(); });
