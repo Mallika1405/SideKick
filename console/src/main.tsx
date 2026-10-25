@@ -13,7 +13,12 @@ const convex = CONVEX_URL ? new ConvexReactClient(CONVEX_URL) : null;
 /** When Convex is configured the whiteboard is driven by useQuery; the server's WS graph messages are ignored. */
 function ConvexBridge({ onGraph }: { onGraph: (g: GraphData) => void }) {
   const g = useQuery(anyApi.sidekick.latestGraph) as GraphData | undefined;
-  useEffect(() => { if (g) onGraph(g); }, [g, onGraph]);
+  const last = useRef('');
+  useEffect(() => { // only push real changes so React Flow keeps its measured node sizes
+    if (!g) return;
+    const j = JSON.stringify(g);
+    if (j !== last.current) { last.current = j; onGraph(g); }
+  }, [g, onGraph]);
   return null;
 }
 

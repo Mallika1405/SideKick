@@ -36,6 +36,7 @@ function Inner({ graph, newKeys, focusKey, onAsk }: Props) {
     const nodes: Node[] = graph.nodes.map((n) => ({
       id: n.key,
       position: pos(n.key),
+      initialWidth: W, initialHeight: H, // visible before React Flow has measured the node
       data: { label: (<div title={n.summary}><b>{n.label}</b><div style={{ fontSize: 11, opacity: 0.75 }}>{n.kind} · {n.files.length} file{n.files.length === 1 ? '' : 's'}</div></div>) },
       style: {
         width: W, borderRadius: 8, padding: 6, fontSize: 13, color: 'inherit', background: 'var(--card, #fff)',
