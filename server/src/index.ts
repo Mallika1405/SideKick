@@ -31,7 +31,15 @@ mkdirSync(samplesDir, { recursive: true });
 
 const consoles = new Set<WebSocket>();
 const extensions = new Set<WebSocket>();
-const sendTo = (set: Set<WebSocket>, m: ServerMsg) => { const s = JSON.stringify(m); for (const w of set) if (w.readyState === WebSocket.OPEN) w.send(s); };
+const audioClients = new Set<WebSocket>(); // native audio in the editor extension; when present it, not the browser tab, plays the voice
+const sendTo = (set: Set<WebSocket>, m: ServerMsg) => {
+  const s = JSON.stringify(m);
+  const isAudio = m.type === 'audio' || m.type === 'audio_end';
+  for (const w of set) {
+    if (isAudio && audioClients.size > 0 && !audioClients.has(w)) continue; // voice goes only to the native audio client
+    if (w.readyState === WebSocket.OPEN) w.send(s);
+  }
+};
 const toAll = (m: ServerMsg) => { sendTo(consoles, m); sendTo(extensions, m); };
 setBroadcast((m) => sendTo(consoles, m));
 const speaker = new Speaker((m) => sendTo(consoles, m));
@@ -332,10 +340,11 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws, req) => {
   const role = new URL(req.url ?? '', 'http://x').searchParams.get('role');
   (role === 'extension' ? extensions : consoles).add(ws);
+  if (role === 'audio') audioClients.add(ws); // audio clients are also in `consoles`, so they receive captions, transcripts and stop_playback
   console.log(`[ws] ${role} connected`);
   ws.send(JSON.stringify({ type: 'toggles', modes: state.toggles } satisfies ServerMsg));
   ws.send(JSON.stringify({ type: 'settings', verbosity: state.verbosity } satisfies ServerMsg));
-  ws.on('close', () => { consoles.delete(ws); extensions.delete(ws); });
+  ws.on('close', () => { consoles.delete(ws); extensions.delete(ws); audioClients.delete(ws); });
   ws.on('message', (raw) => {
     let parsed;
     try { parsed = ClientMsg.safeParse(JSON.parse(raw.toString())); } catch { return; }
@@ -368,8 +377,8 @@ wss.on('connection', (ws, req) => {
         void sendDetail({ level: 'file', file: rel, line: m.line }, 'editor', { file: rel, line: m.line });
         break;
       }
-      case 'ptt': if (m.down) stt.warm(); break;
-      case 'mic': { micFrames++; const b = Buffer.from(m.pcm, 'base64'); measure(b); if (state.toggles.listen) void stt.send(b); break; }
+      case 'ptt': if (m.down && (!audioClients.size || audioClients.has(ws))) stt.warm(); break;
+      case 'mic': { if (audioClients.size && !audioClients.has(ws)) break; micFrames++; const b = Buffer.from(m.pcm, 'base64'); measure(b); if (state.toggles.listen) void stt.send(b); break; }
       default: break;
     }
   });

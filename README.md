@@ -46,7 +46,7 @@ npm run console             # console on http://localhost:5173
 
 **Convex (optional):** `node node_modules/convex/bin/main.js dev`, then put the printed URL in `.env` as `CONVEX_URL`.
 
-**Editor extension:** `npm run ext:build -w extension`, then either press F5 on the `extension/` folder in VS Code, or install `extension/sidekick-0.0.4.vsix` (built with `vsce package`).
+**Editor extension:** `npm run ext:build -w extension`, then either press F5 on the `extension/` folder in VS Code, or install `extension/sidekick-0.0.5.vsix` (built with `vsce package`).
 
 **Whiteboard views:** the board switches itself as things happen (a green dot marks a tab with fresh content), and clicking a tab pins your choice for 20 seconds.
 - *Map*: click a component to hear about it and open its Detail.
@@ -54,6 +54,8 @@ npm run console             # console on http://localhost:5173
 - *Sketch*: the narrator/answerer emits `SKETCH` JSON lines (boxes, notes, schematic plots, small tables) that are drawn with rough.js and laid out with dagre. Plots are schematic only and labelled as such; the model is told never to invent numbers.
 
 **Whiteboard in the editor:** the extension opens the whiteboard as a panel beside your code (command `Sidekick: Open Whiteboard`; the Board status-bar toggle opens/closes it). The panel embeds the console's board-only view (`http://localhost:5173/?board=1`), so `npm run console` must be running. Mic and audio output stay in the main console tab (editor webviews have unreliable mic access); that tab can sit in the background.
+
+**Voice without the browser tab (macOS):** the extension bundles a native audio helper (`extension/bin/sidekick-audio`, source in `extension/native/`, rebuild with `extension/native/build.sh`). It owns the mic and speaker, so no console tab is needed: use the **Talk** status-bar button or Cmd+Alt+T (press to start; it stops when your question is committed or after 20 s), or **Sidekick: Toggle Always-On Mic**. Pressing Talk interrupts the voice. macOS will ask to let the editor use the microphone. Set `sidekick.nativeAudio` to `false` (and reload) to use the browser tab instead. VS Code webviews cannot open the mic (`getUserMedia` never resolves), which is why a helper process is needed.
 
 **Use it:** open the console, click **Enable audio + mic**, then in `demo-repo/` run `claude` (trust the folder so the hooks load, confirm with `/hooks`). Edit code and listen. Hold **Space** in the console to ask a question; speaking over the narrator stops it. `scripts/reset-demo.sh` restores the demo repo.
 

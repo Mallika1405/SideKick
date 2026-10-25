@@ -12,7 +12,7 @@ const pcm24 = new Int16Array(Buffer.concat(bufs).buffer.slice(0));
 const n16 = Math.floor((pcm24.length * 2) / 3), pcm16 = new Int16Array(n16);
 for (let i = 0; i < n16; i++) { const x = i * 1.5, a = Math.floor(x), f = x - a; pcm16[i] = pcm24[a] * (1 - f) + (pcm24[a + 1] ?? pcm24[a]) * f; }
 
-const ws = new WebSocket('ws://localhost:4317/ws?role=console');
+const ws = new WebSocket('ws://localhost:4317/ws?role=' + (process.env.ROLE ?? 'console'));
 let t0 = 0, audioAt = 0, audioBytes = 0;
 ws.on('message', (raw) => {
   const m = JSON.parse(raw.toString());

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import WebSocket from 'ws';
+import { NativeAudio } from './audio';
 
 type Mode = 'narrate' | 'listen' | 'review' | 'whiteboard';
 const MODES: Mode[] = ['narrate', 'listen', 'review', 'whiteboard'];
@@ -173,6 +174,15 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sidekick.openBoard', () => openBoard(true)),
     vscode.commands.registerCommand('sidekick.testWebviewMic', testWebviewMic),
   );
+  // Native mic + voice, so the browser console is not needed.
+  const talkItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 120);
+  talkItem.command = 'sidekick.talk';
+  const audio = new NativeAudio(ctx, log, talkItem);
+  ctx.subscriptions.push(talkItem, { dispose: () => audio.dispose() },
+    vscode.commands.registerCommand('sidekick.talk', () => audio.toggleTalk()),
+    vscode.commands.registerCommand('sidekick.toggleAlwaysOn', () => audio.toggleAlwaysOn()));
+  if (vscode.workspace.getConfiguration('sidekick').get<boolean>('nativeAudio', true)) { audio.render(); audio.start(); }
+  else log.appendLine('native audio disabled (sidekick.nativeAudio = false): use the browser console tab for voice');
   render();
   connect();
 

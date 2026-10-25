@@ -2,7 +2,7 @@
   "name": "sidekick-vscode",
   "displayName": "Sidekick",
   "publisher": "sidekick",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": false,
   "engines": {
     "vscode": "^1.90.0"
@@ -44,6 +44,14 @@
       {
         "command": "sidekick.testWebviewMic",
         "title": "Sidekick: Test Microphone in Webview"
+      },
+      {
+        "command": "sidekick.talk",
+        "title": "Sidekick: Talk (push to talk)"
+      },
+      {
+        "command": "sidekick.toggleAlwaysOn",
+        "title": "Sidekick: Toggle Always-On Mic"
       }
     ],
     "keybindings": [
@@ -51,8 +59,23 @@
         "command": "sidekick.skip",
         "key": "ctrl+alt+s",
         "mac": "cmd+alt+s"
+      },
+      {
+        "command": "sidekick.talk",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Sidekick",
+      "properties": {
+        "sidekick.nativeAudio": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use the editor's native mic and speaker (macOS helper) instead of the browser console tab. Turn off to fall back to the browser tab. Takes effect after reloading the window."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js",
