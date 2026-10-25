@@ -206,10 +206,16 @@ function onHook(kind: string, raw: string) {
   try { json = JSON.parse(raw); } catch { return console.warn('[hook] non-JSON body'); }
   const base = HookBase.safeParse(json);
   if (base.success && base.data.cwd) {
-    const fresh = root !== base.data.cwd;
-    root = base.data.cwd;
-    snapshot(root);
-    if (fresh) void codeIndex.indexAll(root);
+    // Claude's shell cd's persist, so a hook's cwd can be a subfolder of the project. Never shrink the root into it.
+    const cwd = base.data.cwd;
+    const inside = root !== '' && (cwd === root || cwd.startsWith(root + '/'));
+    if (!inside) {
+      const parentOfRoot = root !== '' && root.startsWith(cwd + '/');
+      root = cwd; // a different project, or an ancestor of the current root: widen to it
+      snapshot(root);
+      void codeIndex.indexAll(root);
+      if (parentOfRoot) console.log(`[root] widened to ${root}`);
+    }
   }
   if (kind === 'prompt') state.lastPrompt = String((json as { prompt?: unknown }).prompt ?? '').slice(0, 1000);
   else if (kind === 'stop') { rescanAs('claude'); batcher.flush(); if (state.toggles.whiteboard) void graphSvc.update(); }
