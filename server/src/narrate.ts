@@ -6,8 +6,8 @@ export const NARRATE_MODEL = 'claude-haiku-5-5';
 const client = () => new Anthropic(); // reads ANTHROPIC_API_KEY
 
 const LENGTH: Record<Verbosity, string> = {
-  terse: 'Exactly one short sentence.',
-  normal: 'At most two sentences.',
+  terse: 'Exactly one sentence of at most 20 words. Mention only the single most important change.',
+  normal: 'At most two sentences, 40 words total.',
   detailed: 'At most three sentences, including why the change likely matters.',
 };
 

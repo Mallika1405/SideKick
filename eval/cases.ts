@@ -1,0 +1,21 @@
+// Scripted edits applied to real demo-repo files. These are NOT live Claude Code edits; each case has a
+// hand-written `truth` so a human can score the narration as accurate / partly / wrong.
+export type Case = { id: string; file: string; find: string; replace: string; prompt: string; truth: string };
+
+export const CASES: Case[] = [
+  { id: 'missing-sleep-impute', file: 'sleepstudy/cleaning/missing.py', find: "    return df.dropna(subset=['exam_score','sleep_hours'])", replace: "    df['sleep_hours'] = df['sleep_hours'].fillna(df['sleep_hours'].median())\n    return df.dropna(subset=['exam_score'])", prompt: 'keep students with no sleep data', truth: 'Missing sleep hours are filled with the median instead of dropping the row; only rows missing exam score are dropped.' },
+  { id: 'outlier-threshold', file: 'sleepstudy/cleaning/outliers.py', find: 'z.abs() < CONFIG.outlier_z', replace: 'z.abs() < 2.5', prompt: 'tighten outliers', truth: 'The outlier cutoff is now a hard-coded 2.5 instead of the config value.' },
+  { id: 'sleep-range-upper', file: 'sleepstudy/cleaning/sleep_range.py', find: 'between(CONFIG.min_sleep_hours, CONFIG.max_sleep_hours)', replace: 'between(CONFIG.min_sleep_hours, 24)', prompt: '', truth: 'The upper sleep limit is now 24 hours instead of the configured maximum, so impossible long values are kept.' },
+  { id: 'split-leakage', file: 'sleepstudy/models/split.py', find: "    X, y = df[FEATURE_COLUMNS], df[CONFIG.target]\n", replace: "    X, y = df[FEATURE_COLUMNS], df[CONFIG.target]\n    X = (X - X.mean()) / X.std()  # standardise features\n", prompt: 'scale features', truth: 'Features are standardised using the whole dataset before the train/test split (leakage).' },
+  { id: 'ridge-alphas', file: 'sleepstudy/models/ridge.py', find: 'alphas=[0.1, 1.0, 10.0]', replace: 'alphas=[0.0001]', prompt: '', truth: 'The ridge regularisation search now tries only one very small value.' },
+  { id: 'forest-trees', file: 'sleepstudy/models/forest.py', find: 'n_estimators=200', replace: 'n_estimators=5', prompt: 'make training faster', truth: 'The random forest now uses 5 trees instead of 200.' },
+  { id: 'config-test-fraction', file: 'sleepstudy/config.py', find: 'test_fraction: float = 0.2', replace: 'test_fraction: float = 0.5', prompt: '', truth: 'The test fraction goes from 20 percent to 50 percent.' },
+  { id: 'scaler-fit-transform', file: 'sleepstudy/models/scaling.py', find: 'StandardScaler().fit(X_train)', replace: 'StandardScaler().fit_transform(X_train)', prompt: '', truth: 'The function now returns the scaled training data instead of the fitted scaler.' },
+  { id: 'dedupe-keep-first', file: 'sleepstudy/cleaning/drop_duplicates.py', find: "keep='last'", replace: "keep='first'", prompt: '', truth: 'Duplicate students now keep their earliest row instead of the latest.' },
+  { id: 'evaluate-rmse', file: 'sleepstudy/models/evaluate.py', find: "'mae': mean_absolute_error(y_test, pred)}", replace: "'mae': mean_absolute_error(y_test, pred), 'rmse': float(((y_test - pred) ** 2).mean() ** 0.5)}", prompt: 'report rmse too', truth: 'The evaluation results now also include root mean squared error.' },
+  { id: 'ttest-equal-var', file: 'sleepstudy/stats/ttest.py', find: 'equal_var=False', replace: 'equal_var=True', prompt: '', truth: 'The t-test now assumes equal variances in both groups instead of Welch correction.' },
+  { id: 'scatter-title', file: 'sleepstudy/plots/scatter.py', find: "ax.set_xlabel('Sleep (hours)'); ax.set_ylabel('Exam score')", replace: "ax.set_xlabel('Sleep (hours)'); ax.set_ylabel('Exam score')\n    ax.set_title('Sleep vs exam score')", prompt: 'label the plot', truth: 'The scatter plot gets a title.' },
+  { id: 'sleep-debt-target', file: 'sleepstudy/features/sleep_debt.py', find: '(8 - df.sleep_hours)', replace: '(7.5 - df.sleep_hours)', prompt: '', truth: 'Sleep debt is measured against 7.5 hours instead of 8.' },
+  { id: 'cv-folds', file: 'sleepstudy/models/crossval.py', find: 'folds=5', replace: 'folds=10', prompt: '', truth: 'Cross-validation now uses 10 folds instead of 5.' },
+  { id: 'bonferroni-cap', file: 'sleepstudy/stats/multiple_testing.py', find: 'min(1.0, p * m)', replace: 'p * m', prompt: '', truth: 'Adjusted p-values are no longer capped at one.' },
+];
