@@ -6,6 +6,7 @@ export interface Store {
   recordEdit(e: Edit): Promise<void>;
   recordNarration(n: { editIds: string[]; text: string; file: string; start: number; end: number }): Promise<void>;
   recordIssue(i: Issue): Promise<void>;
+  reset(): Promise<void>;
   getGraph(): Promise<GraphState>;
   applyPatch(p: GraphPatch): Promise<GraphState>;
 }
@@ -32,6 +33,7 @@ export class MemoryStore implements Store {
   async recordNarration(n: { editIds: string[]; text: string; file: string; start: number; end: number }) { this.narrations.push(n); }
   issues: Issue[] = [];
   async recordIssue(i: Issue) { this.issues.push(i); }
+  async reset() { this.graph = { nodes: [], edges: [] }; this.edits = []; this.issues = []; }
   async getGraph() { return this.graph; }
   async applyPatch(p: GraphPatch) { this.graph = applyPatchTo(this.graph, p); return this.graph; }
 }
@@ -45,9 +47,15 @@ export class ConvexStore implements Store {
   private graph: GraphState = { nodes: [], edges: [] };
   private session: Promise<string>;
   private client: ConvexClient;
-  constructor(url: string, repoPath: string) {
+  constructor(url: string, private repoPath: string) {
     this.client = new ConvexClient(url);
     this.session = this.client.mutation(anyApi.sidekick.startSession, { repoPath }) as Promise<string>;
+  }
+  /** A new project gets a new Convex session; the console shows the newest session's graph. */
+  async reset() {
+    this.graph = { nodes: [], edges: [] };
+    this.session = this.client.mutation(anyApi.sidekick.startSession, { repoPath: this.repoPath }) as Promise<string>;
+    await this.session;
   }
   private async safe(fn: (sessionId: string) => Promise<unknown>) {
     try { await fn(await this.session); } catch (e) { console.error('[convex]', (e as Error).message); }

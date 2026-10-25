@@ -11,7 +11,8 @@
   "scripts": {
     "server": "npm run dev -w server",
     "console": "npm run dev -w console",
-    "ext:build": "npm run build -w extension"
+    "ext:build": "npm run build -w extension",
+    "demo:server": "SIDEKICK_ROOT=\"$PWD/demo-fresh\" npm run dev -w server"
   },
   "dependencies": {
     "convex": "^1.48.0"

@@ -152,25 +152,37 @@ async function reviewBatch(batch: { first: Edit; last: Edit }[]) {
   }
 }
 
+type NarrationChange = { file: string; rel: string; diff: string; context: string };
+let waitingNarration: NarrationChange[] | null = null; // a narration that is queued but not started yet; new changes merge into it
+
 const batcher = new Batcher((batch) => {
   if (state.toggles.review) void reviewBatch(batch);
   if (!state.toggles.narrate) return;
-  const changes = batch.filter((p) => !isIgnored(p.first.file)).slice(0, 4).map((p) => ({
+  const fresh: NarrationChange[] = batch.filter((p) => !isIgnored(p.first.file)).slice(0, 4).map((p) => ({
     file: p.first.file,
     rel: codeIndex.rel(p.first.file),
     diff: unified(codeIndex.rel(p.first.file), p.first.before, p.last.after).split('\n').slice(0, 200).join('\n'),
     context: contextAround(p.last.after, p.first.startLine, p.last.endLine),
   }));
-  if (!changes.length) return;
+  if (!fresh.length) return;
+  if (waitingNarration) { // the narrator is still busy: fold these changes into the narration that is already waiting
+    const merged = new Map(waitingNarration.map((c) => [c.file, c]));
+    for (const c of fresh) merged.set(c.file, c);
+    waitingNarration = [...merged.values()].slice(-4);
+    return;
+  }
+  waitingNarration = fresh;
   const userPrompt = state.lastPrompt, verbosity = state.verbosity, lastNarrations = state.lastNarrations.slice(-3);
   speaker.enqueue('narration', async (register) => {
+    const changes = waitingNarration ?? fresh;
+    waitingNarration = null; // started: later changes get their own narration
     const ac = new AbortController();
     const utt = openUtterance('narrator', 'narrator');
     const pres = presenter(utt);
     register(() => { ac.abort(); utt.cancel(); pres.cancel(); });
     try {
       console.log(`[narrate] start: ${changes.map((c) => c.rel).join(', ')}`);
-      const text = await narrate({ changes, lastNarrations, userPrompt, verbosity }, (s, d) => { console.log(`[narrate] sentence (${d.sketches.length} sketches${d.highlight ? ', highlight' : ''}): ${s.slice(0, 80)}`); pres.onSentence(s, d); }, ac.signal);
+      const text = await narrate({ changes, lastNarrations, userPrompt, verbosity }, pres.onSentence, ac.signal);
       console.log('[narrate] done');
       state.lastNarrations.push(text);
       const h = changes[0];
@@ -178,7 +190,7 @@ const batcher = new Batcher((batch) => {
       void codeIndex.addNote({ id: `narration:${Date.now()}`, text: `Narration of change to ${codeIndex.rel(h.file)}: ${text}`, metadata: { file: h.file, startLine: '1', endLine: '1', kind: 'narration' } });
       await utt.end();
     } catch (e) { if (!ac.signal.aborted) notify('narration', e); utt.cancel(); }
-  });
+  }, () => { waitingNarration = null; });
 });
 
 function recordEdit(file: string, before: string, after: string, source: Edit['source']) {
@@ -219,7 +231,9 @@ function onHook(kind: string, raw: string) {
     const inside = root !== '' && (cwd === root || cwd.startsWith(root + '/'));
     if (!inside) {
       const parentOfRoot = root !== '' && root.startsWith(cwd + '/');
+      const different = root !== '' && !parentOfRoot;
       root = cwd; // a different project, or an ancestor of the current root: widen to it
+      if (different) { void graphSvc.reset(); recentEdits.length = 0; changeLog.length = 0; } // new project: start with a clean board
       snapshot(root);
       void codeIndex.indexAll(root);
       if (parentOfRoot) console.log(`[root] widened to ${root}`);

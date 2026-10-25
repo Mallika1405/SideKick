@@ -45,27 +45,34 @@ export class GraphService {
   private pendingDiffs: string[] = [];
   private idle: NodeJS.Timeout | null = null;
   private busy = false;
+  private rerun = false;
   constructor(private store: Store, private onGraph: (g: GraphState, newKeys: string[]) => void, private overview: () => string) {}
 
   noteEdit(diff: string) {
     this.pendingDiffs.push(diff);
     if (this.idle) clearTimeout(this.idle);
-    this.idle = setTimeout(() => void this.update(), 10_000); // also update after idle, not only on Stop
+    this.idle = setTimeout(() => void this.update(), 3_000); // update shortly after edits settle, so the board grows during a build, not only at Stop
   }
 
   async bootstrapIfEmpty() {
     const g = await this.store.getGraph();
     this.onGraph(g, []);
-    if (!g.nodes.length) await this.run(`REPOSITORY OVERVIEW (first pass):\n${this.overview()}`);
+    const overview = this.overview();
+    if (!g.nodes.length && overview.trim()) await this.run(`REPOSITORY OVERVIEW (first pass):\n${overview}`); // nothing to map in an empty project
   }
 
   async update() {
     if (this.idle) clearTimeout(this.idle);
     this.idle = null;
     if (!this.pendingDiffs.length) return;
+    if (this.busy) { this.rerun = true; return; } // keep the diffs; run again as soon as the current patch lands
     const diffs = this.pendingDiffs.splice(0).join('\n').slice(0, 12_000);
     await this.run(`NEW CODE CHANGES:\n${diffs}`);
+    if (this.rerun) { this.rerun = false; void this.update(); }
   }
+
+  /** Forget everything when the project changes. */
+  async reset() { this.pendingDiffs = []; this.rerun = false; await this.store.reset(); this.onGraph({ nodes: [], edges: [] }, []); }
 
   private async run(material: string) {
     if (this.busy) return;

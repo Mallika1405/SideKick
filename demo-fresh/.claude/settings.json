@@ -1,0 +1,14 @@
+{
+  "permissions": { "defaultMode": "acceptEdits" },
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [ { "type": "http", "url": "http://localhost:4317/hook/post-tool-use", "timeout": 5 } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "http", "url": "http://localhost:4317/hook/prompt", "timeout": 5 } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "http", "url": "http://localhost:4317/hook/stop", "timeout": 5 } ] }
+    ]
+  }
+}
