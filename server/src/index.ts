@@ -21,6 +21,10 @@ import { answer } from './answer.js';
 import { ConvexStore, MemoryStore, type Store } from './store.js';
 import { GraphService, describeGraph } from './graph.js';
 import { review } from './review.js';
+import { Project, buildDetail, defAt } from './analyze.js';
+import type { Directive } from './protocol.js';
+import type { DetailMsg, DetailTarget } from '@sidekick/shared';
+import { relative } from 'node:path';
 
 const samplesDir = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'samples');
 mkdirSync(samplesDir, { recursive: true });
@@ -57,6 +61,58 @@ const graphSvc = new GraphService(store, (g, newKeys) => {
 });
 const recentEdits: { edit: Edit; diff: string }[] = [];
 
+// ---- whiteboard: drill-down detail + presenting directives in time with speech ----
+const changeLog: { rel: string; start: number; end: number; at: number }[] = [];
+let lastPresentAt = 0, lastDetailKey = '';
+const isoRel = (abs: string) => (root ? relative(root, abs) : abs);
+
+async function sendDetail(target: DetailTarget, reason: DetailMsg['reason'], focus?: { file: string; line: number }) {
+  if (!root || !state.toggles.whiteboard) return;
+  const key = JSON.stringify([target, focus?.line ?? null, reason === 'editor']);
+  if (reason === 'editor' && key === lastDetailKey) return;
+  lastDetailKey = key;
+  const changed = new Map<string, [number, number][]>();
+  for (const c of changeLog) if (Date.now() - c.at < 10 * 60_000) changed.set(c.rel, [...(changed.get(c.rel) ?? []), [c.start, c.end]]);
+  const d = buildDetail(new Project(root), target, { root, graph: await store.getGraph(), changed, focus }, reason);
+  if (d) sendTo(consoles, d);
+}
+
+/** Where a detail target lives in the editor, so a click on the board can jump the editor there. */
+function locate(t: DetailTarget): { file: string; start: number; end: number } | null {
+  if (t.level === 'component') return null;
+  const file = join(root, t.file);
+  if (t.level === 'file') return { file, start: 1, end: 1 };
+  const d = new Project(root).files.get(t.file)?.defs.find((x) => x.name === t.fn);
+  return d ? { file, start: d.start, end: d.start } : null;
+}
+
+/** Shows a sentence's directives: editor highlight, board zoom to that file, sketch steps, map focus. */
+function present(d: Directive) {
+  lastPresentAt = Date.now();
+  if (d.highlight) {
+    sendTo(extensions, { type: 'highlight', ...d.highlight });
+    const rel = isoRel(d.highlight.file);
+    void sendDetail({ level: 'file', file: rel, line: d.highlight.start }, 'narrator', { file: rel, line: d.highlight.start });
+  }
+  for (const patch of d.sketches) sendTo(consoles, { type: 'sketch', patch });
+  if (d.focus) sendTo(consoles, { type: 'focus_node', nodeKey: d.focus });
+}
+
+/** Times each sentence's directives to when it is about to be spoken (TTS generation outruns playback). */
+function presenter(utt: { push(s: string): void }) {
+  const timers: NodeJS.Timeout[] = [];
+  let spokenMs = 500;
+  const t0 = Date.now();
+  return {
+    onSentence(s: string, d: Directive) {
+      if (d.highlight || d.sketches.length || d.focus) timers.push(setTimeout(() => present(d), Math.max(0, spokenMs - (Date.now() - t0))));
+      spokenMs += s.length * 65;
+      if (s) utt.push(s);
+    },
+    cancel() { timers.forEach(clearTimeout); },
+  };
+}
+
 // ---- narration pipeline -------------------------------------------------
 const issuesByFile = new Map<string, Issue[]>();
 const spokenKeys = new Set<string>();
@@ -79,7 +135,7 @@ async function reviewBatch(batch: { first: Edit; last: Edit }[]) {
         speaker.enqueue('warning', async (register) => {
           const utt = openUtterance('reviewer', 'reviewer');
           register(() => utt.cancel());
-          sendTo(extensions, { type: 'highlight', file, start: i.line, end: i.line });
+          present({ highlight: { file, start: i.line, end: i.line }, sketches: [] });
           utt.push(`Heads up in ${basename(file)}, around line ${i.line}. ${i.message}`);
           await utt.end();
         });
@@ -93,7 +149,8 @@ const batcher = new Batcher((batch) => {
   if (!state.toggles.narrate) return;
   const changes = batch.filter((p) => !isIgnored(p.first.file)).slice(0, 4).map((p) => ({
     file: p.first.file,
-    diff: unified(basename(p.first.file), p.first.before, p.last.after).split('\n').slice(0, 200).join('\n'),
+    rel: codeIndex.rel(p.first.file),
+    diff: unified(codeIndex.rel(p.first.file), p.first.before, p.last.after).split('\n').slice(0, 200).join('\n'),
     context: contextAround(p.last.after, p.first.startLine, p.last.endLine),
   }));
   if (!changes.length) return;
@@ -101,22 +158,12 @@ const batcher = new Batcher((batch) => {
   speaker.enqueue('narration', async (register) => {
     const ac = new AbortController();
     const utt = openUtterance('narrator', 'narrator');
-    const timers: NodeJS.Timeout[] = [];
-    register(() => { ac.abort(); utt.cancel(); timers.forEach(clearTimeout); });
+    const pres = presenter(utt);
+    register(() => { ac.abort(); utt.cancel(); pres.cancel(); });
     try {
-      // Jump the editor to each file as its sentence is reached: estimate when the sentence will be spoken.
-      let spokenMs = 500;
-      const t0 = Date.now();
-      const text = await narrate({ changes, lastNarrations, userPrompt, verbosity }, {
-        onSentence: (s, h) => {
-          if (h) {
-            const delay = Math.max(0, spokenMs - (Date.now() - t0));
-            timers.push(setTimeout(() => sendTo(extensions, { type: 'highlight', ...h }), delay));
-          }
-          spokenMs += s.length * 65;
-          utt.push(s);
-        },
-      }, ac.signal);
+      console.log(`[narrate] start: ${changes.map((c) => c.rel).join(', ')}`);
+      const text = await narrate({ changes, lastNarrations, userPrompt, verbosity }, (s, d) => { console.log(`[narrate] sentence (${d.sketches.length} sketches${d.highlight ? ', highlight' : ''}): ${s.slice(0, 80)}`); pres.onSentence(s, d); }, ac.signal);
+      console.log('[narrate] done');
       state.lastNarrations.push(text);
       const h = changes[0];
       void store.recordNarration({ editIds: [], text, file: h.file, start: 0, end: 0 });
@@ -130,6 +177,8 @@ function recordEdit(file: string, before: string, after: string, source: Edit['s
   shadow.set(file, after);
   if (before === after) return;
   const e = batcher.add({ ts: Date.now(), source, file, before, after });
+  changeLog.push({ rel: codeIndex.rel(file), start: e.startLine, end: e.endLine, at: Date.now() });
+  if (changeLog.length > 60) changeLog.shift();
   console.log(`[edit:${source}] ${file}:${e.startLine}-${e.endLine}`);
   recentEdits.push({ edit: e, diff: unified(codeIndex.rel(file), before, after).split('\n').slice(0, 40).join('\n') });
   if (recentEdits.length > 5) recentEdits.shift();
@@ -212,7 +261,8 @@ function ask(question: string, fromNode = false) {
   speaker.enqueue('answer', async (register) => {
     const ac = new AbortController();
     const utt = openUtterance('narrator', 'narrator');
-    register(() => { ac.abort(); utt.cancel(); });
+    const pres = presenter(utt);
+    register(() => { ac.abort(); utt.cancel(); pres.cancel(); });
     try {
       const { hits } = await (pre ?? retrieve(question));
       const text = await answer({
@@ -220,7 +270,7 @@ function ask(question: string, fromNode = false) {
         chunks: hits.map((h) => ({ rel: codeIndex.rel(h.metadata.file), start: +h.metadata.startLine, end: +h.metadata.endLine, text: h.text })),
         recentEdits: recentEdits.map((r) => r.diff),
         graphSummary,
-      }, (s) => utt.push(s), ac.signal, (nodeKey) => { if (!fromNode) sendTo(consoles, { type: 'focus_node', nodeKey }); });
+      }, (s, d) => pres.onSentence(s, fromNode ? { ...d, focus: undefined } : d), ac.signal, (rel) => (root && existsSync(join(root, rel)) ? join(root, rel) : undefined));
       state.lastNarrations.push(`(answered question) ${text}`);
       await utt.end();
     } catch (e) { if (!ac.signal.aborted) notify('answer', e); utt.cancel(); }
@@ -232,7 +282,14 @@ async function askNode(nodeKey: string) {
   const node = g.nodes.find((n) => n.key === nodeKey);
   if (!node) return;
   sendTo(consoles, { type: 'focus_node', nodeKey });
+  void sendDetail({ level: 'component', key: nodeKey }, 'click');
   ask(`Explain the ${node.label} part of the project: ${node.summary}`, true);
+}
+
+function explainTarget(t: DetailTarget) {
+  if (t.level === 'component') return void askNode(t.key);
+  const what = t.level === 'function' ? `the function ${t.fn} in ${t.file}` : `the file ${t.file}`;
+  ask(`Explain what ${what} does and how it fits into the rest of the project.`, true);
 }
 
 function onStt(ev: SttEvent) {
@@ -282,6 +339,19 @@ wss.on('connection', (ws, req) => {
       case 'skip': speaker.skip(); break;
       case 'hello': if (role !== 'extension' && state.toggles.whiteboard) void graphSvc.bootstrapIfEmpty(); break;
       case 'ask_node': askNode(m.nodeKey); break;
+      case 'open_detail': {
+        void sendDetail(m.target, 'click');
+        const at = locate(m.target); // clicking a file/function on the board also jumps the editor there
+        if (at) sendTo(extensions, { type: 'highlight', ...at });
+        break;
+      }
+      case 'explain': explainTarget(m.target); break;
+      case 'active_file': {
+        if (Date.now() - lastPresentAt < 12_000 || !root || !m.file.startsWith(root)) break; // don't fight the narrator
+        const rel = isoRel(m.file);
+        void sendDetail({ level: 'file', file: rel, line: m.line }, 'editor', { file: rel, line: m.line });
+        break;
+      }
       case 'ptt': if (m.down) stt.warm(); break;
       case 'mic': { micFrames++; const b = Buffer.from(m.pcm, 'base64'); measure(b); if (state.toggles.listen) void stt.send(b); break; }
       default: break;

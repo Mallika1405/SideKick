@@ -19,8 +19,8 @@ for (const c of CASES) {
   const { startLine, endLine } = lineRange(before, after);
   let highlight = '';
   const text = await narrate(
-    { changes: [{ file: c.file, diff: unified(c.file, before, after), context: contextAround(after, startLine, endLine) }], lastNarrations: [], userPrompt: c.prompt, verbosity: 'terse' },
-    { onSentence: (_s, h) => { if (h && !highlight) highlight = `${h.file}:${h.start}-${h.end}`; } },
+    { changes: [{ file: c.file, rel: c.file, diff: unified(c.file, before, after), context: contextAround(after, startLine, endLine) }], lastNarrations: [], userPrompt: c.prompt, verbosity: 'terse' },
+    (_s, d) => { if (d.highlight && !highlight) highlight = `${d.highlight.file.split('/').slice(-2).join('/')}:${d.highlight.start}-${d.highlight.end}`; },
     new AbortController().signal,
   );
   console.log(`${c.id}: ${text}`);

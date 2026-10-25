@@ -13,6 +13,8 @@ const toggles: Record<Mode, boolean> = { narrate: true, listen: true, review: tr
 const items = new Map<Mode, vscode.StatusBarItem>();
 let connItem: vscode.StatusBarItem;
 let clearTimer: NodeJS.Timeout | undefined;
+let suppressActiveUntil = 0; // our own highlight() switches files; don't report that back as the user's choice
+let activeTimer: NodeJS.Timeout | undefined;
 let boardPanel: vscode.WebviewPanel | undefined;
 const CONSOLE_URL = 'http://localhost:5173/?board=1';
 
@@ -79,6 +81,7 @@ function render() {
 
 /** Opens the file if needed, switches to it in the editor group the user is working in, highlights the lines and scrolls to them. */
 async function highlight(file: string, start: number, end: number) {
+  suppressActiveUntil = Date.now() + 2500;
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.window.visibleTextEditors[0]?.viewColumn ?? vscode.ViewColumn.One;
   const editor = await vscode.window.showTextDocument(doc, { viewColumn: column, preserveFocus: true, preview: false });
@@ -128,6 +131,17 @@ export function activate(ctx: vscode.ExtensionContext) {
   );
   render();
   connect();
+
+  // Tell the server which file/function the user is on so the whiteboard can follow along.
+  const reportActive = (editor: vscode.TextEditor | undefined) => {
+    if (!editor || editor.document.uri.scheme !== 'file' || Date.now() < suppressActiveUntil) return;
+    clearTimeout(activeTimer);
+    activeTimer = setTimeout(() => send({ type: 'active_file', file: editor.document.uri.fsPath, line: editor.selection.active.line + 1 }), 500);
+  };
+  ctx.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(reportActive),
+    vscode.window.onDidChangeTextEditorSelection((e) => reportActive(e.textEditor)),
+  );
 
   for (const d of vscode.workspace.textDocuments) shadow.set(d.uri.fsPath, d.getText());
   ctx.subscriptions.push(

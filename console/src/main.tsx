@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { MODES, ServerMsg, type Mode, type Toggles, type Verbosity } from '@sidekick/shared';
 import { PcmPlayer } from './player';
 import { startMic, toBase64 } from './mic';
-import { Whiteboard, type GraphData } from './Whiteboard';
+import type { GraphData } from './Whiteboard';
+import { Board } from './Board';
+import { onDetail, onSketch } from './boardStore';
 import { ConvexProvider, ConvexReactClient, useQuery } from 'convex/react';
 import { anyApi } from 'convex/server';
 
@@ -66,6 +68,8 @@ function App() {
         else if (d.type === 'toggles') { setToggles({ ...ALL_ON, ...d.modes }); live.current.listen = d.modes.listen !== false; }
         else if (d.type === 'graph') { if (!convex) setGraph({ nodes: d.nodes, edges: d.edges }); setNewKeys(d.newKeys); }
         else if (d.type === 'focus_node') { setFocusKey(d.nodeKey); setTimeout(() => setFocusKey((k) => (k === d.nodeKey ? null : k)), 6000); }
+        else if (d.type === 'detail') onDetail(d);
+        else if (d.type === 'sketch') onSketch(d.patch);
         else if (d.type === 'notice') { setNotice(d.text); setTimeout(() => setNotice(''), 15000); }
         else if (d.type === 'heard') setHeard(d.text);
         else if (d.type === 'moss') setMoss({ count: d.count, ms: d.ms });
@@ -113,7 +117,7 @@ function App() {
     return (
       <div style={{ height: '100vh' }}>
         {convex && <ConvexBridge onGraph={setGraph} />}
-        <Whiteboard graph={graph} newKeys={newKeys} focusKey={focusKey} onAsk={(key) => send({ type: 'ask_node', nodeKey: key })} />
+        <Board graph={graph} newKeys={newKeys} focusKey={focusKey} send={send} />
       </div>
     );
   }
@@ -147,7 +151,7 @@ function App() {
       {convex && <ConvexBridge onGraph={setGraph} />}
       {toggles.whiteboard && (
         <div style={{ border: '1px solid #8884', borderRadius: 8, overflow: 'hidden', height: 'calc(100vh - 2rem)' }}>
-          <Whiteboard graph={graph} newKeys={newKeys} focusKey={focusKey} onAsk={(key) => send({ type: 'ask_node', nodeKey: key })} />
+          <Board graph={graph} newKeys={newKeys} focusKey={focusKey} send={send} />
         </div>
       )}
     </div>

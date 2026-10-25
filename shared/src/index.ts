@@ -26,6 +26,56 @@ export const GraphPatchSchema = z.object({
 export type GraphEdge = { from: string; to: string; label: string };
 export type GraphState = { nodes: GraphNode[]; edges: GraphEdge[] };
 
+
+// ---- Whiteboard: hand-drawn sketches and drill-down detail views -----------
+export const SketchNodeSchema = z.object({
+  id: z.string().min(1),
+  type: z.enum(['box', 'note', 'plot', 'table', 'circle']).default('box'),
+  label: z.string().default(''),
+  color: z.enum(['blue', 'green', 'orange', 'red', 'purple', 'gray']).default('gray'),
+  plot: z.enum(['scatter', 'line', 'bar', 'hist']).optional(),
+  trend: z.enum(['up', 'down', 'flat', 'u', 'peak']).optional(),
+  columns: z.array(z.string()).max(6).optional(),
+  rows: z.array(z.array(z.string())).max(5).optional(),
+});
+export const SketchEdgeSchema = z.object({
+  from: z.string(), to: z.string(), label: z.string().default(''), style: z.enum(['solid', 'dashed']).default('solid'),
+});
+/** A patch to the current sketch. Nodes/edges with an existing id update in place; `clear` starts a fresh drawing. */
+export const SketchPatchSchema = z.object({
+  clear: z.boolean().optional(),
+  title: z.string().optional(),
+  layout: z.enum(['LR', 'TB']).optional(),
+  nodes: z.array(SketchNodeSchema).default([]),
+  edges: z.array(SketchEdgeSchema).default([]),
+});
+export type SketchNode = z.infer<typeof SketchNodeSchema>;
+export type SketchEdge = z.infer<typeof SketchEdgeSchema>;
+export type SketchPatch = z.infer<typeof SketchPatchSchema>;
+
+export const DetailTargetSchema = z.discriminatedUnion('level', [
+  z.object({ level: z.literal('component'), key: z.string() }),
+  z.object({ level: z.literal('file'), file: z.string(), line: z.number().optional() }),
+  z.object({ level: z.literal('function'), file: z.string(), fn: z.string() }),
+]);
+export type DetailTarget = z.infer<typeof DetailTargetSchema>;
+export const DetailNodeSchema = z.object({
+  id: z.string(), label: z.string(), kind: z.enum(['file', 'function', 'class', 'external']),
+  file: z.string(), startLine: z.number(), endLine: z.number(), summary: z.string(),
+  changed: z.boolean().default(false), focus: z.boolean().default(false), center: z.boolean().default(false),
+});
+export type DetailNode = z.infer<typeof DetailNodeSchema>;
+export const DetailMsgSchema = z.object({
+  type: z.literal('detail'),
+  target: DetailTargetSchema,
+  title: z.string(),
+  crumbs: z.array(z.object({ label: z.string(), target: DetailTargetSchema.nullable() })), // null target = back to the Map
+  nodes: z.array(DetailNodeSchema),
+  edges: z.array(z.object({ from: z.string(), to: z.string(), label: z.string() })),
+  reason: z.enum(['narrator', 'editor', 'click', 'answer']),
+});
+export type DetailMsg = z.infer<typeof DetailMsgSchema>;
+
 // Extension/Console -> server
 export const ClientMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('edit'), file: z.string(), before: z.string(), after: z.string(), ts: z.number() }),
@@ -36,6 +86,9 @@ export const ClientMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('hello') }),
   z.object({ type: z.literal('verbosity'), level: z.enum(['terse', 'normal', 'detailed']) }),
   z.object({ type: z.literal('skip') }),
+  z.object({ type: z.literal('open_detail'), target: DetailTargetSchema }),
+  z.object({ type: z.literal('explain'), target: DetailTargetSchema }),
+  z.object({ type: z.literal('active_file'), file: z.string(), line: z.number() }),
 ]);
 export type ClientMsg = z.infer<typeof ClientMsg>;
 
@@ -49,6 +102,8 @@ export const ServerMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('audio_end'), utteranceId: z.string() }),
   z.object({ type: z.literal('stop_playback') }),
   z.object({ type: z.literal('caption'), role: z.enum(['narrator', 'reviewer', 'user']), text: z.string() }),
+  DetailMsgSchema,
+  z.object({ type: z.literal('sketch'), patch: SketchPatchSchema }),
   z.object({ type: z.literal('notice'), text: z.string() }),
   z.object({ type: z.literal('heard'), text: z.string() }),
   z.object({ type: z.literal('moss'), count: z.number(), ms: z.number() }),
