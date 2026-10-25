@@ -13,28 +13,44 @@ const toggles: Record<Mode, boolean> = { narrate: true, listen: true, review: tr
 const items = new Map<Mode, vscode.StatusBarItem>();
 let connItem: vscode.StatusBarItem;
 let clearTimer: NodeJS.Timeout | undefined;
-let diagnostics: vscode.DiagnosticCollection;
-
-type Issue = { file: string; line: number; severity: 'info' | 'warn' | 'bug'; message: string };
-const SEVERITY = { info: vscode.DiagnosticSeverity.Information, warn: vscode.DiagnosticSeverity.Warning, bug: vscode.DiagnosticSeverity.Error };
-
-function showIssues(items: Issue[]) {
-  const byFile = new Map<string, vscode.Diagnostic[]>();
-  for (const i of items) {
-    const line = Math.max(0, i.line - 1);
-    const d = new vscode.Diagnostic(new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER), i.message, SEVERITY[i.severity]);
-    d.source = 'Sidekick';
-    byFile.set(i.file, [...(byFile.get(i.file) ?? []), d]);
-  }
-  diagnostics.clear();
-  for (const [file, ds] of byFile) diagnostics.set(vscode.Uri.file(file), ds);
-}
-
 const highlightType = vscode.window.createTextEditorDecorationType({
   backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
   isWholeLine: true,
   overviewRulerColor: new vscode.ThemeColor('editorOverviewRuler.findMatchForeground'),
 });
+
+type Issue = { file: string; line: number; severity: 'info' | 'warn' | 'bug'; message: string };
+const deco = (rgb: string) => vscode.window.createTextEditorDecorationType({
+  isWholeLine: true,
+  backgroundColor: `rgba(${rgb}, 0.18)`,
+  borderWidth: '0 0 0 3px', borderStyle: 'solid', borderColor: `rgb(${rgb})`, // left bar
+  overviewRulerColor: `rgb(${rgb})`, overviewRulerLane: vscode.OverviewRulerLane.Right,
+});
+const issueTypes: Record<Issue['severity'], vscode.TextEditorDecorationType> = {
+  bug: deco('229, 57, 53'), warn: deco('245, 166, 35'), info: deco('66, 133, 244'),
+};
+let issues: Issue[] = [];
+
+// Issues are drawn as line highlights (not diagnostics) so they never collide with the language server's squiggles.
+function renderIssues(editor: vscode.TextEditor) {
+  const mine = issues.filter((i) => i.file === editor.document.uri.fsPath);
+  for (const sev of Object.keys(issueTypes) as Issue['severity'][]) {
+    const opts: vscode.DecorationOptions[] = mine.filter((i) => i.severity === sev).map((i) => {
+      const line = Math.min(Math.max(0, i.line - 1), editor.document.lineCount - 1);
+      const text = i.message.length > 90 ? i.message.slice(0, 87) + '...' : i.message;
+      return {
+        range: new vscode.Range(line, 0, line, 0),
+        hoverMessage: new vscode.MarkdownString(`**Sidekick (${sev})**: ${i.message}`),
+        renderOptions: { after: { contentText: `   ${text}`, color: new vscode.ThemeColor('editorCodeLens.foreground'), fontStyle: 'italic' } },
+      };
+    });
+    editor.setDecorations(issueTypes[sev], opts);
+  }
+}
+function showIssues(items: Issue[]) {
+  issues = items;
+  for (const e of vscode.window.visibleTextEditors) renderIssues(e);
+}
 
 const send = (m: object) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); };
 
@@ -71,8 +87,10 @@ function connect() {
 }
 
 export function activate(ctx: vscode.ExtensionContext) {
-  diagnostics = vscode.languages.createDiagnosticCollection('sidekick');
-  ctx.subscriptions.push(diagnostics);
+  ctx.subscriptions.push(
+    vscode.window.onDidChangeVisibleTextEditors((es) => es.forEach(renderIssues)),
+    ...Object.values(issueTypes),
+  );
   connItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 110);
   connItem.command = 'sidekick.skip';
   connItem.tooltip = 'Sidekick: click to skip current narration';
