@@ -30,7 +30,7 @@ export function buildAnswerPrompt(i: AnswerInput): string {
 /** Streams an answer and calls onSentence for each complete sentence. */
 export async function answer(i: AnswerInput, onSentence: (s: string) => void, signal: AbortSignal, onFocus: (key: string) => void = () => {}): Promise<string> {
   const stream = new Anthropic().messages.stream(
-    { model: ANSWER_MODEL, max_tokens: 350, system: SYSTEM, messages: [{ role: 'user', content: buildAnswerPrompt(i) }] },
+    { model: ANSWER_MODEL, max_tokens: 350, thinking: { type: 'disabled' }, system: SYSTEM, messages: [{ role: 'user', content: buildAnswerPrompt(i) }] },
     { signal },
   );
   let buf = '', full = '', headerDone = false;

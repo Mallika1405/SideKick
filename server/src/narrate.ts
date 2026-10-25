@@ -41,7 +41,7 @@ export async function narrate(
   signal: AbortSignal,
 ): Promise<string> {
   const stream = client().messages.stream(
-    { model: NARRATE_MODEL, max_tokens: 300, system: NARRATE_SYSTEM(i.verbosity), messages: [{ role: 'user', content: buildUserMessage(i) }] },
+    { model: NARRATE_MODEL, max_tokens: 300, thinking: { type: 'disabled' }, system: NARRATE_SYSTEM(i.verbosity), messages: [{ role: 'user', content: buildUserMessage(i) }] },
     { signal },
   );
   let buf = '', headerDone = false, full = '';

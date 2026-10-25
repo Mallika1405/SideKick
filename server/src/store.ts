@@ -1,10 +1,11 @@
-import type { Edit, GraphEdge, GraphNode, GraphPatch, GraphState } from '@sidekick/shared';
+import type { Edit, Issue, GraphEdge, GraphNode, GraphPatch, GraphState } from '@sidekick/shared';
 
 /** Persistence boundary. MemoryStore always works; ConvexStore mirrors the same data for the console. */
 export interface Store {
   readonly name: string;
   recordEdit(e: Edit): Promise<void>;
   recordNarration(n: { editIds: string[]; text: string; file: string; start: number; end: number }): Promise<void>;
+  recordIssue(i: Issue): Promise<void>;
   getGraph(): Promise<GraphState>;
   applyPatch(p: GraphPatch): Promise<GraphState>;
 }
@@ -29,6 +30,8 @@ export class MemoryStore implements Store {
   private graph: GraphState = { nodes: [], edges: [] };
   async recordEdit(e: Edit) { this.edits.push(e); }
   async recordNarration(n: { editIds: string[]; text: string; file: string; start: number; end: number }) { this.narrations.push(n); }
+  issues: Issue[] = [];
+  async recordIssue(i: Issue) { this.issues.push(i); }
   async getGraph() { return this.graph; }
   async applyPatch(p: GraphPatch) { this.graph = applyPatchTo(this.graph, p); return this.graph; }
 }
@@ -54,6 +57,9 @@ export class ConvexStore implements Store {
   }
   recordNarration(n: { editIds: string[]; text: string; file: string; start: number; end: number }) {
     return this.safe((sessionId) => this.client.mutation(anyApi.sidekick.addNarration, { sessionId, ...n }));
+  }
+  recordIssue(i: Issue) {
+    return this.safe((sessionId) => this.client.mutation(anyApi.sidekick.addIssue, { sessionId, file: i.file, line: i.line, severity: i.severity, message: i.message, spoken: i.spoken }));
   }
   async getGraph() { return this.graph; }
   async applyPatch(p: GraphPatch) {

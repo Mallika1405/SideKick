@@ -13,6 +13,22 @@ const toggles: Record<Mode, boolean> = { narrate: true, listen: true, review: tr
 const items = new Map<Mode, vscode.StatusBarItem>();
 let connItem: vscode.StatusBarItem;
 let clearTimer: NodeJS.Timeout | undefined;
+let diagnostics: vscode.DiagnosticCollection;
+
+type Issue = { file: string; line: number; severity: 'info' | 'warn' | 'bug'; message: string };
+const SEVERITY = { info: vscode.DiagnosticSeverity.Information, warn: vscode.DiagnosticSeverity.Warning, bug: vscode.DiagnosticSeverity.Error };
+
+function showIssues(items: Issue[]) {
+  const byFile = new Map<string, vscode.Diagnostic[]>();
+  for (const i of items) {
+    const line = Math.max(0, i.line - 1);
+    const d = new vscode.Diagnostic(new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER), i.message, SEVERITY[i.severity]);
+    d.source = 'Sidekick';
+    byFile.set(i.file, [...(byFile.get(i.file) ?? []), d]);
+  }
+  diagnostics.clear();
+  for (const [file, ds] of byFile) diagnostics.set(vscode.Uri.file(file), ds);
+}
 
 const highlightType = vscode.window.createTextEditorDecorationType({
   backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
@@ -50,10 +66,13 @@ function connect() {
     try { m = JSON.parse(raw.toString()); } catch { return; }
     if (m.type === 'toggles') { Object.assign(toggles, m.modes); render(); }
     else if (m.type === 'highlight') void highlight(m.file, m.start, m.end);
+    else if (m.type === 'issues') showIssues(m.items);
   });
 }
 
 export function activate(ctx: vscode.ExtensionContext) {
+  diagnostics = vscode.languages.createDiagnosticCollection('sidekick');
+  ctx.subscriptions.push(diagnostics);
   connItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 110);
   connItem.command = 'sidekick.skip';
   connItem.tooltip = 'Sidekick: click to skip current narration';

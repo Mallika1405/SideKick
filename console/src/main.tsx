@@ -38,6 +38,7 @@ function App() {
   const [graph, setGraph] = useState<GraphData>({ nodes: [], edges: [] });
   const [newKeys, setNewKeys] = useState<string[]>([]);
   const [focusKey, setFocusKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState('');
   const [sent, setSent] = useState(0);
   const [level, setLevel] = useState(0);
   const [heard, setHeard] = useState('');
@@ -63,6 +64,7 @@ function App() {
         else if (d.type === 'toggles') { setToggles({ ...ALL_ON, ...d.modes }); live.current.listen = d.modes.listen !== false; }
         else if (d.type === 'graph') { if (!convex) setGraph({ nodes: d.nodes, edges: d.edges }); setNewKeys(d.newKeys); }
         else if (d.type === 'focus_node') { setFocusKey(d.nodeKey); setTimeout(() => setFocusKey((k) => (k === d.nodeKey ? null : k)), 6000); }
+        else if (d.type === 'notice') { setNotice(d.text); setTimeout(() => setNotice(''), 15000); }
         else if (d.type === 'heard') setHeard(d.text);
         else if (d.type === 'moss') setMoss({ count: d.count, ms: d.ms });
         else if (d.type === 'settings') setVerbosity(d.verbosity);
@@ -116,6 +118,7 @@ function App() {
         </select>
         <button onClick={() => send({ type: 'skip' })}>Skip</button>
       </header>
+      {notice && <p style={{ background: '#c332', border: '1px solid #c33', borderRadius: 6, padding: '6px 10px' }}>{notice}</p>}
       <p>Server: {connected ? 'connected' : 'disconnected (is the server running on :4317?)'}</p>
       {!armed && <button onClick={enable}>Enable audio + mic</button>}
       {micError && <p style={{ color: '#c33' }}>Mic unavailable: {micError}. Narration still works; questions need the mic.</p>}

@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { ClientMsg, SERVER_PORT, type Edit, type ServerMsg } from '@sidekick/shared';
+import { ClientMsg, SERVER_PORT, type Edit, type Issue, type ServerMsg } from '@sidekick/shared';
 import { shadow, snapshot, readText } from './shadow.js';
 import { lineRange, unified, contextAround } from './diffing.js';
 import { Batcher } from './batcher.js';
@@ -20,6 +20,7 @@ import { SttSession, type SttEvent } from './stt.js';
 import { answer } from './answer.js';
 import { ConvexStore, MemoryStore, type Store } from './store.js';
 import { GraphService, describeGraph } from './graph.js';
+import { review } from './review.js';
 
 const samplesDir = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'samples');
 mkdirSync(samplesDir, { recursive: true });
@@ -31,6 +32,12 @@ const toAll = (m: ServerMsg) => { sendTo(consoles, m); sendTo(extensions, m); };
 setBroadcast((m) => sendTo(consoles, m));
 const speaker = new Speaker((m) => sendTo(consoles, m));
 let root = '';
+const notify = (what: string, e: unknown) => {
+  const msg = (e as { error?: { error?: { message?: string } }; message?: string });
+  const detail = msg.error?.error?.message ?? msg.message ?? String(e);
+  console.error(`[${what}]`, detail);
+  sendTo(consoles, { type: 'notice', text: `${what} failed: ${detail}`.slice(0, 240) });
+};
 const codeIndex = new CodeIndex(await createRetriever(), () => root);
 const store: Store = process.env.CONVEX_URL ? new ConvexStore(process.env.CONVEX_URL, process.env.SIDEKICK_ROOT ?? 'demo-repo') : new MemoryStore();
 console.log(`[store] ${store.name}`);
@@ -51,7 +58,37 @@ const graphSvc = new GraphService(store, (g, newKeys) => {
 const recentEdits: { edit: Edit; diff: string }[] = [];
 
 // ---- narration pipeline -------------------------------------------------
+const issuesByFile = new Map<string, Issue[]>();
+const spokenKeys = new Set<string>();
+async function reviewBatch(batch: { first: Edit; last: Edit }[]) {
+  for (const p of batch.slice(0, 3)) {
+    const file = p.first.file;
+    if (isIgnored(file)) continue;
+    try {
+      const rel = codeIndex.rel(file);
+      const diff = unified(rel, p.first.before, p.last.after).split('\n').slice(0, 120).join('\n');
+      const lines = p.last.after.split('\n').slice(0, 400).map((l, i) => `${i + 1}: ${l}`).join('\n');
+      const items = await review(file, rel, diff, lines);
+      issuesByFile.set(file, items);
+      sendTo(extensions, { type: 'issues', items: [...issuesByFile.values()].flat() });
+      for (const i of items) void store.recordIssue(i);
+      for (const i of items.filter((x) => x.severity === 'bug')) {
+        const key = `${file}:${i.message}`;
+        if (spokenKeys.has(key)) continue;
+        spokenKeys.add(key); i.spoken = true;
+        speaker.enqueue('warning', async (register) => {
+          const utt = openUtterance('reviewer', 'reviewer');
+          register(() => utt.cancel());
+          utt.push(`Heads up in ${basename(file)}, around line ${i.line}. ${i.message}`);
+          await utt.end();
+        });
+      }
+    } catch (e) { notify('review', e); }
+  }
+}
+
 const batcher = new Batcher((batch) => {
+  if (state.toggles.review) void reviewBatch(batch);
   if (!state.toggles.narrate) return;
   const changes = batch.filter((p) => !isIgnored(p.first.file)).slice(0, 4).map((p) => ({
     file: p.first.file,
@@ -74,7 +111,7 @@ const batcher = new Batcher((batch) => {
       void store.recordNarration({ editIds: [], text, file: h.file, start: 0, end: 0 });
       void codeIndex.addNote({ id: `narration:${Date.now()}`, text: `Narration of change to ${codeIndex.rel(h.file)}: ${text}`, metadata: { file: h.file, startLine: '1', endLine: '1', kind: 'narration' } });
       await utt.end();
-    } catch (e) { if (!ac.signal.aborted) console.error('[narrate]', e); utt.cancel(); }
+    } catch (e) { if (!ac.signal.aborted) notify('narration', e); utt.cancel(); }
   });
 });
 
@@ -169,7 +206,7 @@ function ask(question: string, fromNode = false) {
       }, (s) => utt.push(s), ac.signal, (nodeKey) => { if (!fromNode) sendTo(consoles, { type: 'focus_node', nodeKey }); });
       state.lastNarrations.push(`(answered question) ${text}`);
       await utt.end();
-    } catch (e) { if (!ac.signal.aborted) console.error('[answer]', e); utt.cancel(); }
+    } catch (e) { if (!ac.signal.aborted) notify('answer', e); utt.cancel(); }
   });
 }
 
