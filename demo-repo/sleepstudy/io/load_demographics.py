@@ -1,0 +1,7 @@
+import pandas as pd
+
+def load_demographics(path: str) -> pd.DataFrame:
+    """Load student demographics from CSV and normalise column names."""
+    df = pd.read_csv(path)
+    df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
+    return df
