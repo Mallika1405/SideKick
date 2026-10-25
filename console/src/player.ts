@@ -4,6 +4,8 @@ export class PcmPlayer {
   private nextTime = 0;
   private sources = new Set<AudioBufferSourceNode>();
 
+  get playing() { return this.nextTime > this.ctx.currentTime; }
+
   async resume() { if (this.ctx.state !== 'running') await this.ctx.resume(); }
 
   play(base64: string, sampleRate: number) {

@@ -1,7 +1,7 @@
 import './env.js';
 import { createServer } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -14,6 +14,10 @@ import { openUtterance, setBroadcast } from './speech.js';
 import { narrate } from './narrate.js';
 import { isIgnored } from './redact.js';
 import { state } from './state.js';
+import { createRetriever } from './retriever.js';
+import { CodeIndex } from './codeindex.js';
+import { SttSession, type SttEvent } from './stt.js';
+import { answer } from './answer.js';
 
 const samplesDir = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'samples');
 mkdirSync(samplesDir, { recursive: true });
@@ -24,6 +28,9 @@ const sendTo = (set: Set<WebSocket>, m: ServerMsg) => { const s = JSON.stringify
 const toAll = (m: ServerMsg) => { sendTo(consoles, m); sendTo(extensions, m); };
 setBroadcast((m) => sendTo(consoles, m));
 const speaker = new Speaker((m) => sendTo(consoles, m));
+let root = '';
+const codeIndex = new CodeIndex(await createRetriever(), () => root);
+const recentEdits: { edit: Edit; diff: string }[] = [];
 
 // ---- narration pipeline -------------------------------------------------
 const batcher = new Batcher((batch) => {
@@ -45,6 +52,8 @@ const batcher = new Batcher((batch) => {
         onSentence: (s) => utt.push(s),
       }, ac.signal);
       state.lastNarrations.push(text);
+      const h = changes[0];
+      void codeIndex.addNote({ id: `narration:${Date.now()}`, text: `Narration of change to ${codeIndex.rel(h.file)}: ${text}`, metadata: { file: h.file, startLine: '1', endLine: '1', kind: 'narration' } });
       await utt.end();
     } catch (e) { if (!ac.signal.aborted) console.error('[narrate]', e); utt.cancel(); }
   });
@@ -55,6 +64,10 @@ function recordEdit(file: string, before: string, after: string, source: Edit['s
   if (before === after) return;
   const e = batcher.add({ ts: Date.now(), source, file, before, after });
   console.log(`[edit:${source}] ${file}:${e.startLine}-${e.endLine}`);
+  recentEdits.push({ edit: e, diff: unified(codeIndex.rel(file), before, after).split('\n').slice(0, 40).join('\n') });
+  if (recentEdits.length > 5) recentEdits.shift();
+  void codeIndex.indexFile(file, after);
+  void codeIndex.addNote({ id: `edit:${e.id}`, text: `Edit to ${codeIndex.rel(file)} lines ${e.startLine}-${e.endLine}\n${recentEdits.at(-1)!.diff}`, metadata: { file, startLine: String(e.startLine), endLine: String(e.endLine), kind: 'edit' } });
 }
 
 // ---- Claude Code hooks --------------------------------------------------
@@ -68,7 +81,12 @@ function onHook(kind: string, raw: string) {
   let json: unknown;
   try { json = JSON.parse(raw); } catch { return console.warn('[hook] non-JSON body'); }
   const base = HookBase.safeParse(json);
-  if (base.success && base.data.cwd) snapshot(base.data.cwd);
+  if (base.success && base.data.cwd) {
+    const fresh = root !== base.data.cwd;
+    root = base.data.cwd;
+    snapshot(root);
+    if (fresh) void codeIndex.indexAll(root);
+  }
   if (kind === 'prompt') state.lastPrompt = String((json as { prompt?: unknown }).prompt ?? '').slice(0, 1000);
   else if (kind === 'stop') batcher.flush();
   else if (kind === 'post-tool-use') {
@@ -102,6 +120,48 @@ const server = createServer((req, res) => {
   res.writeHead(404).end();
 });
 
+// ---- listening: STT -> retrieve -> answer -----------------------------
+let eager: { transcript: string; hits: ReturnType<typeof retrieve> } | null = null;
+const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+
+async function retrieve(question: string) {
+  const r = await codeIndex.query(question, 5);
+  sendTo(consoles, { type: 'moss', count: r.hits.length, ms: r.ms });
+  return r;
+}
+
+function ask(question: string) {
+  sendTo(consoles, { type: 'caption', role: 'user', text: question });
+  const pre = eager && norm(eager.transcript) === norm(question) ? eager.hits : null;
+  eager = null;
+  speaker.enqueue('answer', async (register) => {
+    const ac = new AbortController();
+    const utt = openUtterance('narrator', 'narrator');
+    register(() => { ac.abort(); utt.cancel(); });
+    try {
+      const { hits } = await (pre ?? retrieve(question));
+      const text = await answer({
+        question,
+        chunks: hits.map((h) => ({ rel: codeIndex.rel(h.metadata.file), start: +h.metadata.startLine, end: +h.metadata.endLine, text: h.text })),
+        recentEdits: recentEdits.map((r) => r.diff),
+        graphSummary: '',
+      }, (s) => utt.push(s), ac.signal);
+      state.lastNarrations.push(`(answered question) ${text}`);
+      await utt.end();
+    } catch (e) { if (!ac.signal.aborted) console.error('[answer]', e); utt.cancel(); }
+  });
+}
+
+function onStt(ev: SttEvent) {
+  if (!state.toggles.listen) return;
+  if (ev.type === 'turn.start') { speaker.interrupt(); } // barge-in: stops audio, cancels Claude stream + TTS context
+  else if (ev.type === 'turn.eager_end' && ev.transcript?.trim()) eager = { transcript: ev.transcript, hits: retrieve(ev.transcript) };
+  else if (ev.type === 'turn.resume') eager = null;
+  else if (ev.type === 'turn.end' && ev.transcript && ev.transcript.trim().length > 1) ask(ev.transcript.trim());
+  else if (ev.type === 'error') console.error('[stt]', ev);
+}
+const stt = new SttSession(process.env.CARTESIA_API_KEY ?? '', onStt);
+
 // ---- websocket ----------------------------------------------------------
 const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws, req) => {
@@ -127,9 +187,15 @@ wss.on('connection', (ws, req) => {
       case 'toggle': state.toggles[m.mode] = m.on; toAll({ type: 'toggles', modes: state.toggles }); break;
       case 'verbosity': state.verbosity = m.level; toAll({ type: 'settings', verbosity: m.level }); break;
       case 'skip': speaker.skip(); break;
+      case 'ptt': if (m.down) stt.warm(); break;
+      case 'mic': if (state.toggles.listen) void stt.send(Buffer.from(m.pcm, 'base64')); break;
       default: break;
     }
   });
 });
+
+// Index the demo repo up front so questions work before Claude Code has made an edit.
+const defaultRoot = process.env.SIDEKICK_ROOT ?? join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', 'demo-repo');
+if (existsSync(defaultRoot)) { root = defaultRoot; snapshot(root); void codeIndex.indexAll(root); }
 
 server.listen(SERVER_PORT, () => console.log(`sidekick server on :${SERVER_PORT}`));
